@@ -10,6 +10,7 @@ from virtool_workflow.analysis.analysis import Analysis
 from virtool_workflow.analysis.hmms import HMMs
 from virtool_workflow.analysis.indexes import Index
 from virtool_workflow.analysis.reads import Reads
+from virtool_workflow.analysis.subtractions.subtraction import Subtraction
 from virtool_workflow.execution.run_in_executor import FunctionExecutor
 
 
@@ -31,7 +32,7 @@ async def eliminate_otus(indexes: List[Index], proc: int, reads: Reads, run_subp
 
 
 @step
-async def eliminate_subtraction(proc: int, run_subprocess, subtractions, work_path: Path):
+async def eliminate_subtraction(proc: int, run_subprocess, subtractions: List[Subtraction], work_path: Path):
     """
     Map unaligned reads the `eliminate_otus` step sample's subtraction host using ``bowtie2``.
 
@@ -44,7 +45,7 @@ async def eliminate_subtraction(proc: int, run_subprocess, subtractions, work_pa
         "--very-fast-local",
         "-k", str(1),
         "-p", str(proc),
-        "-x", shlex.quote(subtractions[0].path),
+        "-x", shlex.quote(str(subtractions[0].bowtie2_index_path)),
         "--un", str(work_path / "unmapped_hosts.fq"),
         "-U", str(work_path / "unmapped_otus.fq")
     ]
