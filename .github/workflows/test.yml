@@ -29,6 +29,12 @@ jobs:
       - name: Install tox
         run: pip install tox
 
+      - name: Install Bowtie2
+        run: |
+          wget https://github.com/BenLangmead/bowtie2/releases/download/v2.3.2/bowtie2-2.3.2-legacy-linux-x86_64.zip
+          unzip bowtie2-2.3.2-legacy-linux-x86_64.zip
+          cp bowtie2-2.3.2-legacy/bowtie2* /usr/local/bin
+
       - name: Run tox
         run: tox
         env:
