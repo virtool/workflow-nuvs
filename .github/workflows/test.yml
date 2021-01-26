@@ -40,3 +40,10 @@ jobs:
         env:
           VT_DB_CONNECTION_STRING: mongodb://mongo:27017
           VT_REDIS_CONNECTION_STRING: redis://redis:6379
+
+      - name: Run codacy-coverage-reporter
+        if: ${{ github.event_name == 'push' }}
+        uses: codacy/codacy-coverage-reporter-action@master
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: $GITHUB_WORKSPACE/coverage.xml
