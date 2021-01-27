@@ -1,0 +1,49 @@
+name: Tests
+
+on:
+  pull_request:
+    branches:
+      - "*"
+
+  push:
+    branches:
+      - "master"
+
+jobs:
+
+  test:
+    runs-on: ubuntu-latest
+
+    container:
+      image: python:3.9-buster
+
+    services:
+      redis:
+        image: redis:6.0
+      mongo:
+        image: mongo:4.4
+
+    steps:
+      - uses: actions/checkout@v2
+
+      - name: Install tox
+        run: pip install tox
+
+      - name: Install Bowtie2
+        run: |
+          wget https://github.com/BenLangmead/bowtie2/releases/download/v2.3.2/bowtie2-2.3.2-legacy-linux-x86_64.zip
+          unzip bowtie2-2.3.2-legacy-linux-x86_64.zip
+          cp bowtie2-2.3.2-legacy/bowtie2* /usr/local/bin
+
+      - name: Run tox
+        run: tox
+        env:
+          VT_DB_CONNECTION_STRING: mongodb://mongo:27017
+          VT_REDIS_CONNECTION_STRING: redis://redis:6379
+
+      - name: Run codacy-coverage-reporter
+        if: ${{ github.event_name == 'push' }}
+        uses: codacy/codacy-coverage-reporter-action@master
+        with:
+          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
+          coverage-reports: $GITHUB_WORKSPACE/coverage.xml
