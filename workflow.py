@@ -88,7 +88,15 @@ async def reunite_pairs(reads: Reads, sample, work_path: Path):
 
 
 @step
-async def assemble(analysis, mem, proc, run_subprocess, sample, work_path):
+async def assemble(
+        analysis: Analysis,
+        mem: int,
+        proc: int,
+        run_in_executor,
+        run_subprocess,
+        sample: Sample,
+        work_path: Path
+):
     """
     Call ``spades.py`` to assemble contigs from ``unmapped_hosts.fq``. Passes ``21,33,55,75`` for
     the ``-k`` argument.
@@ -124,8 +132,17 @@ async def assemble(analysis, mem, proc, run_subprocess, sample, work_path):
 
     await run_subprocess(command)
 
-    await analysis.upload_file(
+    compressed_assembly_path = work_path / "assembly.fa.gz"
+
+    await run_in_executor(
+        compress_file,
         spades_path / "scaffolds.fasta",
+        compressed_assembly_path,
+        processes=proc
+    )
+
+    await analysis.upload_file(
+        compressed_assembly_path,
         "fasta"
     )
 
@@ -189,11 +206,11 @@ async def process_fasta(
             for orf in entry["orfs"]:
                 await f.write(f">sequence_{entry['index']}.{orf['index']}\n{orf['pro']}\n")
 
-    compressed_orfs_path = f"{orfs_path}.gz"
+    compressed_orfs_path = Path(f"{orfs_path}.gz")
 
     await run_in_executor(
         compress_file,
-        str(orfs_path),
+        orfs_path,
         compressed_orfs_path,
         processes=proc
     )
