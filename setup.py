@@ -4,7 +4,6 @@ from setuptools import setup, find_packages
 AUTHORS = ["Ian Boyes"]
 
 CLASSIFIERS = [
-    "Topic :: Software Development :: Libraries",
     "Programming Language :: Python :: 3.9",
 ]
 
@@ -12,8 +11,8 @@ PACKAGES = find_packages(exclude="tests")
 
 
 INSTALL_REQUIRES = [
-    "aiofiles==0.6.0",
-    "virtool-core==0.1.1",
+    "aiofiles==0.7.0",
+    "virtool-core==0.2.0",
     "virtool-workflow==0.4.0"
 ]
 
