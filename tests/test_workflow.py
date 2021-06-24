@@ -1,23 +1,16 @@
-import filecmp
-import json
-import operator
 import shutil
 import sys
+from pathlib import Path
 from shutil import copytree
 from typing import List
 
 import pytest
-from pathlib import Path
-
-from virtool_workflow.abc import AbstractFileUploader
-from virtool_workflow.analysis.analysis import Analysis
+import virtool_workflow.execution.run_subprocess
 from virtool_workflow.analysis.indexes import Index, Reference
 from virtool_workflow.analysis.reads import Reads
-
-import virtool_workflow.execution.run_subprocess
 from virtool_workflow.analysis.subtractions.subtraction import Subtraction
 
-from workflow import eliminate_otus, eliminate_subtraction, reunite_pairs, process_fasta
+from workflow import eliminate_otus, eliminate_subtraction
 
 TEST_FILES_PATH = Path(sys.path[0]) / "tests"
 FASTQ_PATH = TEST_FILES_PATH / "test.fq"
