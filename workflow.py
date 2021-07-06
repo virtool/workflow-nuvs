@@ -94,7 +94,7 @@ async def assemble(
         proc: int,
         run_in_executor,
         run_subprocess,
-        sample: Sample,
+        sample,
         work_path: Path
 ):
     """
