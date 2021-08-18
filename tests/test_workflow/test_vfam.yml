@@ -1,0 +1,23 @@
+hits:
+- orfs:
+  - hits:
+    - best_bias: 440.3
+      best_e: 5.0e-135
+      best_score: 4.5
+      full_bias: 4.5
+      full_e: 3.9e-135
+      full_score: 440.7
+      hit: bar
+    name: Foo
+- orfs:
+  - name: Nil
+- orfs:
+  - hits:
+    - best_bias: 400.7
+      best_e: 1.7e-123
+      best_score: 0.8
+      full_bias: 0.8
+      full_e: 1.4e-123
+      full_score: 401.0
+      hit: foo
+    name: Bar

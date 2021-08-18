@@ -1,6 +1,7 @@
 import collections
 import shlex
 from pathlib import Path
+from pprint import pprint
 from typing import List
 
 import aiofiles
@@ -11,7 +12,7 @@ from virtool_workflow.analysis.analysis import Analysis
 from virtool_workflow.analysis.hmms import HMMs
 from virtool_workflow.analysis.indexes import Index
 from virtool_workflow.analysis.reads import Reads
-from virtool_workflow.analysis.subtractions.subtraction import Subtraction
+from virtool_workflow.data_model import Subtraction, Sample
 from virtool_workflow.execution.run_in_executor import FunctionExecutor
 
 
@@ -21,6 +22,7 @@ async def eliminate_otus(
         proc: int,
         reads: Reads,
         run_subprocess,
+        sample: Sample,
         work_path: Path
 ):
     """
@@ -29,6 +31,11 @@ async def eliminate_otus(
     """
     index_path = str(indexes[0].bowtie_path)
 
+    paths = [str(reads.left)]
+
+    if sample.paired:
+        paths.append(str(reads.right))
+
     command = [
         "bowtie2",
         "-p", str(proc),
@@ -36,10 +43,16 @@ async def eliminate_otus(
         "--very-fast-local",
         "-x", index_path,
         "--un", str(work_path / "unmapped_otus.fq"),
-        "-U", ",".join([str(path) for path in reads.paths])
+        "-U", ",".join(paths)
     ]
 
-    await run_subprocess(command)
+    print(command)
+    reads_path = work_path / "reads"
+    print(list(reads_path.iterdir()))
+
+    p = await run_subprocess(command)
+
+    print(p.returncode)
 
 
 @step
@@ -70,19 +83,19 @@ async def eliminate_subtraction(
 
 
 @step
-async def reunite_pairs(reads: Reads, sample, work_path: Path):
+async def reunite_pairs(reads: Reads, sample: Sample, work_path: Path):
     if sample.paired:
         headers = await read_fastq_headers(work_path / "unmapped_hosts.fq")
 
         unmapped_roots = {h.split(" ")[0] for h in headers}
 
         async with aiofiles.open(work_path / "unmapped_1.fq", "w") as f:
-            async for header, seq, quality in read_fastq_from_path(reads.paths[0]):
+            async for header, seq, quality in read_fastq_from_path(reads.left):
                 if header.split(" ")[0] in unmapped_roots:
                     await f.write("\n".join([header, seq, "+", quality]) + "\n")
 
         async with aiofiles.open(work_path / "unmapped_2.fq", "w") as f:
-            async for header, seq, quality in read_fastq_from_path(reads.paths[1]):
+            async for header, seq, quality in read_fastq_from_path(reads.right):
                 if header.split(" ")[0] in unmapped_roots:
                     await f.write("\n".join([header, seq, "+", quality]) + "\n")
 
@@ -137,11 +150,10 @@ async def assemble(
     await run_in_executor(
         compress_file,
         spades_path / "scaffolds.fasta",
-        compressed_assembly_path,
-        processes=proc
+        compressed_assembly_path
     )
 
-    await analysis.upload_file(
+    analysis.upload(
         compressed_assembly_path,
         "fasta"
     )
@@ -160,7 +172,7 @@ async def process_fasta(
     long are recorded. Contigs with no acceptable ORFs are discarded.
 
     """
-    assembly_path = work_path / "assembly.fa"
+    assembly_path = work_path / "spades/scaffolds.fasta"
 
     assembly = await run_in_executor(
         read_fasta,
@@ -170,7 +182,6 @@ async def process_fasta(
     sequences = list()
 
     for _, sequence in assembly:
-
         sequence_length = len(sequence)
 
         # Don't consider the sequence if it is shorter than 300 bp.
@@ -211,16 +222,15 @@ async def process_fasta(
     await run_in_executor(
         compress_file,
         orfs_path,
-        compressed_orfs_path,
-        processes=proc
+        compressed_orfs_path
     )
 
-    await analysis.upload_file(
-        orfs_path,
+    analysis.upload(
+        compressed_orfs_path,
         "fasta"
     )
 
-    results["sequences"] = sequences
+    results["hits"] = sequences
 
 
 @step
@@ -241,16 +251,19 @@ async def vfam(analysis: Analysis, hmms: HMMs, proc: int, results: dict, run_sub
 
     command = [
         "hmmscan",
-        "--tblout", tsv_path,
+        "--tblout", str(tsv_path),
         "--noali",
         "--cpu", str(proc - 1),
-        hmms.path,
-        work_path / "orfs.fa"
+        str(hmms.path),
+        str(work_path / "orfs.fa")
     ]
 
-    await run_subprocess(command)
+    async def handler(line):
+        print(line)
 
-    hits = collections.defaultdict(lambda: collections.defaultdict(list))
+    await run_subprocess(command, stderr_handler=handler)
+
+    hmmer_hits = collections.defaultdict(lambda: collections.defaultdict(list))
 
     # Go through the raw HMMER results and annotate the HMM hits with data from the database.
     async with aiofiles.open(tsv_path, "r") as f:
@@ -265,7 +278,7 @@ async def vfam(analysis: Analysis, hmms: HMMs, proc: int, results: dict, run_sub
                 # Expecting sequence_0.0
                 sequence_index, orf_index = (int(x) for x in line[2].split("_")[1].split("."))
 
-                hits[sequence_index][orf_index].append({
+                hmmer_hits[sequence_index][orf_index].append({
                     "hit": annotation_id,
                     "full_e": float(line[4]),
                     "full_score": float(line[5]),
@@ -275,18 +288,18 @@ async def vfam(analysis: Analysis, hmms: HMMs, proc: int, results: dict, run_sub
                     "best_score": float(line[9])
                 })
 
-    sequences = results["sequences"]
+    hits = results["hits"]
 
-    for sequence_index in hits:
-        for orf_index in hits[sequence_index]:
-            sequences[sequence_index]["orfs"][orf_index]["hits"] = hits[sequence_index][orf_index]
+    for sequence_index in hmmer_hits:
+        for orf_index in hmmer_hits[sequence_index]:
+            hits[sequence_index]["orfs"][orf_index]["hits"] = hmmer_hits[sequence_index][orf_index]
 
-        sequence = sequences[sequence_index]
+        sequence = results["hits"][sequence_index]
 
-        if all(len(o["hits"]) == 0 for o in sequence["orfs"]):
-            sequences.remove(sequence)
+        if all(len(orf["hits"]) == 0 for orf in sequence["orfs"]):
+            hits.remove(sequence)
 
-    await analysis.upload_file(
+    analysis.upload(
         tsv_path,
         "tsv"
     )
