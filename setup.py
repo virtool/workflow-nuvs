@@ -10,11 +10,10 @@ CLASSIFIERS = [
 
 PACKAGES = find_packages(exclude="tests")
 
-
 INSTALL_REQUIRES = [
-    "aiofiles==0.7.0",
-    "virtool-core==0.2.0",
-    "virtool-workflow==0.4.0"
+    "aiofiles>=0.6.0",
+    "virtool-core>=0.3.0",
+    "virtool-workflow==0.6.0"
 ]
 
 setup(
