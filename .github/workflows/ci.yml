@@ -34,15 +34,23 @@ jobs:
           unzip bowtie2-2.3.2-legacy-linux-x86_64.zip
           cp bowtie2-2.3.2-legacy/bowtie2* /usr/local/bin
 
-      - name: Run tox
-        run: tox
-        env:
-          VT_DB_CONNECTION_STRING: mongodb://mongo:27017
-          VT_REDIS_CONNECTION_STRING: redis://redis:6379
+      - name: Install HMMER
+        run: |
+          wget http://eddylab.org/software/hmmer/hmmer-3.2.1.tar.gz
+          tar -xf hmmer-3.2.1.tar.gz
+          cd hmmer-3.2.1
+          ./configure --prefix /hmmer
+          make
+          make install
 
-      - name: Run codacy-coverage-reporter
-        if: ${{ github.event_name == 'push' }}
-        uses: codacy/codacy-coverage-reporter-action@master
-        with:
-          project-token: ${{ secrets.CODACY_PROJECT_TOKEN }}
-          coverage-reports: $GITHUB_WORKSPACE/coverage.xml
+      - name: Install SPAdes
+        run: |
+          wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0-Linux.tar.gz
+          tar -xvf SPAdes-3.11.0-Linux.tar.gz
+          mv SPAdes-3.11.0-Linux /spades
+
+      - name: Run tox
+        run:
+          export PATH=$PATH:/hmmer/bin
+          export PATH=$PATH:/spades/bin
+          tox
