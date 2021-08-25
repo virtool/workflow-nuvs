@@ -9,6 +9,8 @@ on:
     branches:
       - "master"
 
+  workflow_dispatch:
+
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -25,8 +27,10 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install tox
-        run: pip install tox
+      - name: Install Poetry
+        run: |
+          pip install poetry
+          poetry install
 
       - name: Install Bowtie2
         run: |
@@ -49,8 +53,12 @@ jobs:
           tar -xvf SPAdes-3.11.0-Linux.tar.gz
           mv SPAdes-3.11.0-Linux /spades
 
-      - name: Run tox
+      - name: Add Dependencies to Path
         run:
           export PATH=$PATH:/hmmer/bin
           export PATH=$PATH:/spades/bin
-          tox
+
+      - name: Run tests
+        run: |
+          poetry run
+          pytest
