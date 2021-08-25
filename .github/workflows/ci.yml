@@ -59,6 +59,4 @@ jobs:
           export PATH=$PATH:/spades/bin
 
       - name: Run tests
-        run: |
-          poetry run
-          pytest
+        run: poetry run pytest
