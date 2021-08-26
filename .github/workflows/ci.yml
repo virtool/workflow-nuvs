@@ -25,8 +25,8 @@ jobs:
     steps:
       - uses: actions/checkout@v2
 
-      - name: Install tox
-        run: pip install tox
+      - name: Install Poetry
+        run: pip install poetry
 
       - name: Install Bowtie2
         run: |
@@ -49,8 +49,9 @@ jobs:
           tar -xvf SPAdes-3.11.0-Linux.tar.gz
           mv SPAdes-3.11.0-Linux /spades
 
-      - name: Run tox
-        run:
+      - name: Run tests
+        run: |
           export PATH=$PATH:/hmmer/bin
           export PATH=$PATH:/spades/bin
-          tox
+          poetry install
+          poetry run pytest
