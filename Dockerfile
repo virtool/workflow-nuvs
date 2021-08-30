@@ -1,5 +1,5 @@
 # SPAdes
-FROM alpine:latest as spades
+FROM alpine:3.14 as spades
 WORKDIR /build
 RUN wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0-Linux.tar.gz && \
     tar -xvf SPAdes-3.11.0-Linux.tar.gz && \
