@@ -1,39 +1,39 @@
-name: CI
+name: ci
 
 on:
   pull_request:
     branches:
       - "*"
-
   push:
     branches:
-      - "master"
+      - "main"
 
 jobs:
+  commitlint:
+    runs-on: ubuntu-20.04
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          fetch-depth: 0
+      - uses: wagoid/commitlint-github-action@v4
   test:
-    runs-on: ubuntu-latest
-
+    runs-on: ubuntu-20.04
     container:
       image: python:3.9-buster
-
     services:
       redis:
         image: redis:6.0
       mongo:
         image: mongo:4.4
-
     steps:
       - uses: actions/checkout@v2
-
       - name: Install Poetry
         run: pip install poetry
-
       - name: Install Bowtie2
         run: |
           wget https://github.com/BenLangmead/bowtie2/releases/download/v2.3.2/bowtie2-2.3.2-legacy-linux-x86_64.zip
           unzip bowtie2-2.3.2-legacy-linux-x86_64.zip
           cp bowtie2-2.3.2-legacy/bowtie2* /usr/local/bin
-
       - name: Install HMMER
         run: |
           wget http://eddylab.org/software/hmmer/hmmer-3.2.1.tar.gz
@@ -42,16 +42,32 @@ jobs:
           ./configure --prefix /hmmer
           make
           make install
-
       - name: Install SPAdes
         run: |
           wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0-Linux.tar.gz
           tar -xvf SPAdes-3.11.0-Linux.tar.gz
           mv SPAdes-3.11.0-Linux /spades
-
       - name: Run tests
         run: |
           export PATH=$PATH:/hmmer/bin
           export PATH=$PATH:/spades/bin
           poetry install
           poetry run pytest
+  release:
+    runs-on: ubuntu-20.04
+    needs: [test, commitlint]
+    if: github.event_name == 'push'
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+      - name: Setup NodeJS
+        uses: actions/setup-node@v1
+        with:
+          node-version: 14
+      - name: Install semantic-release
+        run: npm i semantic-release@v18.0.0 conventional-changelog-conventionalcommits@4.6.1
+      - name: Release
+        env:
+          GITHUB_USERNAME: ${{ secrets.GH_USERNAME }}
+          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+        run: npx semantic-release
