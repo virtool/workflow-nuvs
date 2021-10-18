@@ -9,7 +9,7 @@ license = "MIT"
 python = "^3.8"
 aiofiles = ">=0.6.0"
 virtool-core = ">=0.3.0"
-virtool-workflow = "==0.6.0"
+virtool-workflow = "^1.0.0"
 
 [tool.poetry.dev-dependencies]
 aiohttp = "^3.7.4"
