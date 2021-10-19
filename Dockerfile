@@ -6,7 +6,7 @@ RUN wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0
     mv SPAdes-3.11.0-Linux spades
 
 
-FROM virtool/workflow:nightly
+FROM virtool/workflow:1.0.0
 WORKDIR /workflow
 COPY --from=spades /build/spades /opt/spades
 RUN ln -fs /opt/spades/bin/spades.py /usr/local/bin/spades.py
