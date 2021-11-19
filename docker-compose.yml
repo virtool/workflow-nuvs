@@ -1,7 +1,7 @@
 version: "3.1"
 services:
   server:
-    image: virtool/virtool:5.5.5
+    image: virtool/virtool:5.9.0
     depends_on:
       - mongo
       - redis
@@ -79,7 +79,7 @@ services:
       --jobs-api-url="http://jobs-api:9990/api"
       --dev-mode
       --is-analysis-workflow
-      jobs_pathoscope_bowtie
+      jobs_nuvs
 
   create-sample:
     image: virtool/create-sample:2.0.1
