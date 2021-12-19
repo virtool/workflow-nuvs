@@ -14,9 +14,22 @@ from virtool_workflow.analysis.hmms import HMMs
 from virtool_workflow.analysis.indexes import Index
 from virtool_workflow.analysis.library_types import LibraryType
 from virtool_workflow.analysis.reads import Reads
-from virtool_workflow.data_model import NucleotideComposition, Subtraction, Reference, Sample, HMM
+from virtool_workflow.data_model import (
+    NucleotideComposition,
+    Subtraction,
+    Reference,
+    Sample,
+    HMM,
+)
 
-from workflow import eliminate_otus, eliminate_subtraction, reunite_pairs, assemble, process_fasta, vfam
+from workflow import (
+    eliminate_otus,
+    eliminate_subtraction,
+    reunite_pairs,
+    assemble,
+    process_fasta,
+    vfam,
+)
 
 TEST_DATA_PATH = Path(__file__).parent / "data"
 FASTQ_PATH = TEST_DATA_PATH / "test.fq"
@@ -46,10 +59,7 @@ def run_subprocess():
 def hmms(work_path: Path):
     hmms_path = work_path / "hmms"
 
-    shutil.copytree(
-        TEST_DATA_PATH / "hmms",
-        hmms_path
-    )
+    shutil.copytree(TEST_DATA_PATH / "hmms", hmms_path)
 
     annotations = [
         HMM(
@@ -63,7 +73,7 @@ def hmms(work_path: Path):
             length=42,
             mean_entropy=0.0001,
             total_entropy=0.0001,
-            names=("Test", "Foo", "Bar")
+            names=("Test", "Foo", "Bar"),
         ),
         HMM(
             id="bar",
@@ -76,14 +86,11 @@ def hmms(work_path: Path):
             length=42,
             mean_entropy=0.0001,
             total_entropy=0.0001,
-            names=("Test", "Foo", "Bar")
+            names=("Test", "Foo", "Bar"),
         ),
     ]
 
-    return HMMs(
-        annotations,
-        hmms_path / "profiles.hmm"
-    )
+    return HMMs(annotations, hmms_path / "profiles.hmm")
 
 
 @pytest.fixture
@@ -100,17 +107,11 @@ def indexes(run_in_executor, run_subprocess, work_path) -> List[Index]:
         data_type="genome",
         description="Reference 1",
         name="Reference 1",
-        organism="viruses"
+        organism="viruses",
     )
 
     index = Index(
-        "foo",
-        dict(),
-        reference,
-        True,
-        index_path,
-        run_in_executor,
-        run_subprocess
+        "foo", dict(), reference, True, index_path, run_in_executor, run_subprocess
     )
 
     return [index]
@@ -127,7 +128,7 @@ async def sample():
         library_type=LibraryType.other,
         paired=False,
         quality=dict(),
-        nuvs=False
+        nuvs=False,
     )
 
 
@@ -138,15 +139,13 @@ async def reads(sample: Sample, work_path: Path):
 
     shutil.copy(FASTQ_PATH, reads_path / "reads_1.fq.gz")
 
-    return Reads(
-        sample,
-        {},
-        reads_path
-    )
+    return Reads(sample, {}, reads_path)
 
 
 @pytest.fixture
-async def analysis(indexes: List[Index], sample: Sample, subtractions: List[Subtraction]):
+async def analysis(
+    indexes: List[Index], sample: Sample, subtractions: List[Subtraction]
+):
     upload_files = make_mocked_coro()
 
     return Analysis(
@@ -156,7 +155,7 @@ async def analysis(indexes: List[Index], sample: Sample, subtractions: List[Subt
         sample=sample,
         index=indexes[0],
         subtractions=subtractions,
-        ready=True
+        ready=True,
     )
 
 
@@ -188,20 +187,20 @@ async def subtractions(work_path):
     return [subtraction]
 
 
-async def test_eliminate_otus(indexes, reads, run_subprocess, sample, work_path):
-    await eliminate_otus(indexes, 2, reads, run_subprocess, sample, work_path)
+async def test_eliminate_otus(indexes, reads: Reads, run_subprocess, work_path: Path):
+    await eliminate_otus(indexes, 2, reads, run_subprocess, work_path)
 
     actual_path = work_path / "unmapped_otus.fq"
 
     with open(actual_path, "r") as f:
         actual = [line.rstrip() for line in f]
-        actual = {tuple(actual[i: i + 4]) for i in range(0, len(actual), 4)}
+        actual = {tuple(actual[i : i + 4]) for i in range(0, len(actual), 4)}
 
     assert len(actual) > 0
 
     with open(TEST_DATA_PATH / "unmapped_otus.fq", "r") as f:
         expected = [line.rstrip() for line in f]
-        expected = {tuple(expected[i: i + 4]) for i in range(0, len(expected), 4)}
+        expected = {tuple(expected[i : i + 4]) for i in range(0, len(expected), 4)}
 
     assert actual == expected
 
@@ -212,7 +211,7 @@ async def test_eliminate_subtraction(run_subprocess, subtractions, work_path):
 
 
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
-async def test_reunite_pairs(paired, reads, sample, work_path):
+async def test_reunite_pairs(paired, run_in_executor, reads, sample, work_path):
     if paired:
         sample.paired = paired
 
@@ -222,7 +221,7 @@ async def test_reunite_pairs(paired, reads, sample, work_path):
             unite = json.load(f)
 
         for path, key in [(reads.left, "left"), (reads.right, "right")]:
-            with open(path, "w") as f:
+            with gzip.open(path, "wt") as f:
                 for line in unite[key]:
                     f.write(line + "\n")
 
@@ -232,22 +231,25 @@ async def test_reunite_pairs(paired, reads, sample, work_path):
             for line in unite["separate"]:
                 f.write(line + "\n")
 
-    await reunite_pairs(reads, sample, work_path)
+    await reunite_pairs(run_in_executor, reads, work_path)
 
     if paired:
-        for filename, key in [("unmapped_1.fq", "united_left"), ("unmapped_2.fq", "united_right")]:
+        for filename, key in [
+            ("unmapped_1.fq", "united_left"),
+            ("unmapped_2.fq", "united_right"),
+        ]:
             with open(work_path / filename, "r") as f:
                 assert [line.rstrip() for line in f] == unite[key]
 
 
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
 async def test_assemble(
-        paired: bool,
-        analysis: Analysis,
-        sample: Sample,
-        run_in_executor,
-        run_subprocess,
-        work_path: Path
+    paired: bool,
+    analysis: Analysis,
+    sample: Sample,
+    run_in_executor,
+    run_subprocess,
+    work_path: Path,
 ):
     sample.paired = paired
 
@@ -258,58 +260,52 @@ async def test_assemble(
         for suffix in (1, 2):
             shutil.copy(
                 TEST_DATA_PATH / "unmapped_{}.fq".format(suffix),
-                work_path / "unmapped_{}.fq".format(suffix)
+                work_path / "unmapped_{}.fq".format(suffix),
             )
     else:
-        shutil.copy(
-            TEST_DATA_PATH / "unmapped_1.fq",
-            work_path / "unmapped_hosts.fq"
-        )
+        shutil.copy(TEST_DATA_PATH / "unmapped_1.fq", work_path / "unmapped_hosts.fq")
 
     await assemble(
-        analysis,
-        mem,
-        proc,
-        run_in_executor,
-        run_subprocess,
-        sample,
-        work_path
+        analysis, mem, proc, run_in_executor, run_subprocess, sample, work_path
     )
 
     expected_path = TEST_DATA_PATH / "scaffolds_{}.fa".format("p" if paired else "u")
     scaffolds_path = work_path / "spades/scaffolds.fasta"
     compressed_path = work_path / "assembly.fa.gz"
 
-    expected = {(record.id, record.seq) for record in SeqIO.parse(expected_path, "fasta")}
+    expected = {
+        (record.id, record.seq) for record in SeqIO.parse(expected_path, "fasta")
+    }
 
     # Check that scaffolds.fasta from SPAdes matches expected data.
-    assert {(record.id, record.seq) for record in SeqIO.parse(scaffolds_path, "fasta")} == expected
+    assert {
+        (record.id, record.seq) for record in SeqIO.parse(scaffolds_path, "fasta")
+    } == expected
 
     # Check that compressed assembly matches expected data.
     with gzip.open(compressed_path, "rt") as f:
-        assert {(record.id, record.seq) for record in SeqIO.parse(f, "fasta")} == expected
+        assert {
+            (record.id, record.seq) for record in SeqIO.parse(f, "fasta")
+        } == expected
 
     assert analysis.to_upload == [(compressed_path, "fasta")]
 
 
-async def test_process_fasta(data_regression, file_regression, analysis: Analysis, run_in_executor, work_path: Path):
+async def test_process_fasta(
+    data_regression,
+    file_regression,
+    analysis: Analysis,
+    run_in_executor,
+    work_path: Path,
+):
     spades_path = work_path / "spades"
     spades_path.mkdir(parents=True)
 
-    shutil.copy(
-        TEST_DATA_PATH / "scaffolds_u.fa",
-        spades_path / "scaffolds.fasta"
-    )
+    shutil.copy(TEST_DATA_PATH / "scaffolds_u.fa", spades_path / "scaffolds.fasta")
 
     results = dict()
 
-    await process_fasta(
-        analysis,
-        2,
-        results,
-        run_in_executor,
-        work_path
-    )
+    await process_fasta(analysis, 2, results, run_in_executor, work_path)
 
     data_regression.check(results)
 
@@ -317,7 +313,9 @@ async def test_process_fasta(data_regression, file_regression, analysis: Analysi
         file_regression.check(f.read())
 
 
-async def test_vfam(data_regression, analysis: Analysis, hmms: HMMs, run_subprocess, work_path: Path):
+async def test_vfam(
+    data_regression, analysis: Analysis, hmms: HMMs, run_subprocess, work_path: Path
+):
     with open(work_path / "orfs.fa", "w") as f:
         f.write(">sequence_0.0\n")
         f.write(
@@ -337,31 +335,12 @@ async def test_vfam(data_regression, analysis: Analysis, hmms: HMMs, run_subproc
 
     results = {
         "hits": [
-            {
-                "orfs": [
-                    {"name": "Foo"}
-                ]
-            },
-            {
-                "orfs": [
-                    {"name": "Nil"}
-                ]
-            },
-            {
-                "orfs": [
-                    {"name": "Bar"}
-                ]
-            }
+            {"orfs": [{"name": "Foo"}]},
+            {"orfs": [{"name": "Nil"}]},
+            {"orfs": [{"name": "Bar"}]},
         ]
     }
 
-    await vfam(
-        analysis,
-        hmms,
-        2,
-        results,
-        run_subprocess,
-        work_path
-    )
+    await vfam(analysis, hmms, 2, results, run_subprocess, work_path)
 
     data_regression.check(results)
