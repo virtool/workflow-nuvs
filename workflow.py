@@ -93,7 +93,7 @@ async def eliminate_subtraction(
 
 
 @step
-async def reunite_pairs(run_in_thread, reads: Reads, work_path: Path):
+async def reunite_pairs(run_in_executor, reads: Reads, work_path: Path):
     if reads.sample.paired:
         headers = await read_fastq_headers(work_path / "unmapped_hosts.fq")
 
@@ -101,7 +101,7 @@ async def reunite_pairs(run_in_thread, reads: Reads, work_path: Path):
 
         for path in (reads.left, reads.right):
 
-            await run_in_thread(decompress_file, path, path.with_suffix(".fq"))
+            await run_in_executor(decompress_file, path, path.with_suffix(".fq"))
 
         async with aiofiles.open(work_path / "unmapped_1.fq", "w") as f:
             async for header, seq, quality in read_fastq_from_path(
