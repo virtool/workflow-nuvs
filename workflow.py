@@ -265,7 +265,7 @@ async def vfam(
         "--noali",
         "--cpu",
         str(proc - 1),
-        str(hmms.path),
+        str(hmms.path / "profiles.hmm"),
         str(work_path / "orfs.fa"),
     ]
 

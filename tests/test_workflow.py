@@ -90,7 +90,7 @@ def hmms(work_path: Path):
         ),
     ]
 
-    return HMMs(annotations, hmms_path / "profiles.hmm")
+    return HMMs(annotations, hmms_path)
 
 
 @pytest.fixture
