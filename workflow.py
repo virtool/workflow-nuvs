@@ -1,9 +1,11 @@
 import collections
 import shlex
+import shutil
 from pathlib import Path
 from typing import List
 
 import aiofiles
+from fixtures import fixture
 from virtool_core.bio import (
     read_fastq_headers,
     read_fastq_from_path,
@@ -33,7 +35,12 @@ async def upload_result(analysis_provider, results):
 
 @step(name="Eliminate OTUs")
 async def eliminate_otus(
-    indexes: List[Index], proc: int, reads: Reads, run_subprocess, work_path: Path
+    indexes: List[Index],
+    proc: int,
+    reads: Reads,
+    sample,
+    run_subprocess,
+    work_path: Path,
 ):
     """
     Map sample reads to reference OTUs and discard.
@@ -44,10 +51,7 @@ async def eliminate_otus(
     """
     index_path = str(indexes[0].bowtie_path)
 
-    paths = [str(reads.left)]
-
-    if reads.sample.paired:
-        paths.append(str(reads.right))
+    read_paths = ",".join(str(path) for path in sample.read_paths)
 
     command = [
         "bowtie2",
@@ -61,11 +65,10 @@ async def eliminate_otus(
         "--un",
         str(work_path / "unmapped_otus.fq"),
         "-U",
-        ",".join(paths),
+        read_paths,
     ]
 
-    reads_path = work_path / "reads"
-    p = await run_subprocess(command)
+    await run_subprocess(command)
 
 
 @step
@@ -101,7 +104,7 @@ async def eliminate_subtraction(
 
 
 @step
-async def reunite_pairs(run_in_executor, reads: Reads, work_path: Path):
+async def reunite_pairs(run_in_executor, reads: Reads, sample: Sample, work_path: Path):
     """
     Reunite paired reads after elimination.
     """
@@ -111,7 +114,6 @@ async def reunite_pairs(run_in_executor, reads: Reads, work_path: Path):
         unmapped_roots = {h.split(" ")[0] for h in headers}
 
         for path in (reads.left, reads.right):
-
             await run_in_executor(decompress_file, path, path.with_suffix(".fq"))
 
         async with aiofiles.open(work_path / "unmapped_1.fq", "w") as f:
@@ -166,13 +168,19 @@ async def assemble(
 
     await run_subprocess(command)
 
+    await run_in_executor(
+        shutil.move, spades_path / "scaffolds.fasta", work_path / "assembly.fa"
+    )
+
     compressed_assembly_path = work_path / "assembly.fa.gz"
 
     await run_in_executor(
-        compress_file, spades_path / "scaffolds.fasta", compressed_assembly_path
+        compress_file, work_path / "assembly.fa", compressed_assembly_path
     )
 
     analysis.upload(compressed_assembly_path, "fasta")
+
+    await run_in_executor(shutil.rmtree, spades_path)
 
 
 @step
@@ -190,7 +198,7 @@ async def process_fasta(
     ORFs are discarded.
 
     """
-    assembly_path = work_path / "spades/scaffolds.fasta"
+    assembly_path = work_path / "assembly.fa"
 
     assembly = await run_in_executor(read_fasta, assembly_path)
 

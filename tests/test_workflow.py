@@ -270,7 +270,7 @@ async def test_assemble(
     )
 
     expected_path = TEST_DATA_PATH / "scaffolds_{}.fa".format("p" if paired else "u")
-    scaffolds_path = work_path / "spades/scaffolds.fasta"
+    assembly_path = work_path / "assembly.fa"
     compressed_path = work_path / "assembly.fa.gz"
 
     expected = {
@@ -279,7 +279,7 @@ async def test_assemble(
 
     # Check that scaffolds.fasta from SPAdes matches expected data.
     assert {
-        (record.id, record.seq) for record in SeqIO.parse(scaffolds_path, "fasta")
+        (record.id, record.seq) for record in SeqIO.parse(assembly_path, "fasta")
     } == expected
 
     # Check that compressed assembly matches expected data.
@@ -301,7 +301,7 @@ async def test_process_fasta(
     spades_path = work_path / "spades"
     spades_path.mkdir(parents=True)
 
-    shutil.copy(TEST_DATA_PATH / "scaffolds_u.fa", spades_path / "scaffolds.fasta")
+    shutil.copy(TEST_DATA_PATH / "scaffolds_u.fa", work_path / "assembly.fa")
 
     results = dict()
 
