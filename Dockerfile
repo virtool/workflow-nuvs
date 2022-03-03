@@ -5,7 +5,7 @@ RUN wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0
     tar -xvf SPAdes-3.11.0-Linux.tar.gz && \
     mv SPAdes-3.11.0-Linux spades
 
-FROM virtool/workflow:2.0.0 as build
+FROM virtool/workflow:2.1.2 as build
 WORKDIR /workflow
 COPY --from=spades /build/spades /opt/spades
 RUN ln -fs /opt/spades/bin/spades.py /usr/local/bin/spades.py
