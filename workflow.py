@@ -31,7 +31,7 @@ async def upload_result(analysis_provider, results):
     await analysis_provider.upload_result(results)
 
 
-@step
+@step(name="Eliminate OTUs")
 async def eliminate_otus(
     indexes: List[Index], proc: int, reads: Reads, run_subprocess, work_path: Path
 ):
@@ -239,7 +239,7 @@ async def process_fasta(
     results["hits"] = sequences
 
 
-@step
+@step(name="VFam")
 async def vfam(
     analysis: Analysis,
     hmms: HMMs,
