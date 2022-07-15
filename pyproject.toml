@@ -8,8 +8,8 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "^3.8"
 biopython = "^1.79"
-virtool-core = "^0.4.0"
-virtool-workflow = "^4.2.1"
+virtool-core = "^1.0.0"
+virtool-workflow = "^4.2.2"
 
 [tool.poetry.dev-dependencies]
 aiohttp = "^3.7.4"
