@@ -47,6 +47,24 @@ jobs:
           wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0-Linux.tar.gz
           tar -xvf SPAdes-3.11.0-Linux.tar.gz
           mv SPAdes-3.11.0-Linux /spades
+
+      - name: Install Rust
+        run: |
+          curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+          echo "${HOME}/.cargo/bin" >> $GITHUB_PATH
+
+      - name: Pigz
+        run: |
+          apt update
+          apt-get install pigz -y
+
+      - name: Install Dependencies
+        run: |
+          poetry install
+          poetry run maturin build
+          poetry add target/wheels/nuvs_rust*.whl
+
+
       - name: Run tests
         run: |
           export PATH=$PATH:/hmmer/bin

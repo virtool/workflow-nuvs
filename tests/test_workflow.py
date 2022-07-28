@@ -231,7 +231,10 @@ async def test_reunite_pairs(paired, run_in_executor, reads, sample, work_path):
             for line in unite["separate"]:
                 f.write(line + "\n")
 
-    await reunite_pairs(run_in_executor, reads, work_path)
+        assert reads.right.exists()
+
+    assert reads.left.exists()
+    await reunite_pairs(reads, work_path)
 
     if paired:
         for filename, key in [
