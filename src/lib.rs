@@ -61,7 +61,6 @@ fn read_fastq(reader: BufReader<File>) -> Vec<FastqRecord>{
             has_plus = true;
             continue;
         } 
-
         
         if !has_plus {
 
@@ -136,9 +135,6 @@ fn unzip_gz(filename: &str, target: &str) -> BufReader<File> {
         .expect("Failed to decompress with pigz");
 
 
-    println!("{:#?}", &command);
-
-
     let read_file = File::open(target).expect("File not found");
     BufReader::new(read_file)
 }
@@ -150,11 +146,9 @@ fn reunite_pairs(reads: Reads, work_path: String) -> PyResult<Py<Reads>> {
 
     let b = Path::new(&reads.left).exists();
     let b2 = Path::new(&reads.right).exists();
-    println!("{}, {}", b, b2);
 
     let reads_left = unzip_gz(&reads.left, &reads.left.replace(".gz", ""));
     let reads_right = unzip_gz(&reads.right, &reads.right.replace(".gz", ""));
-
 
     let mut out_1 = BufWriter::new(File::create(Path::new(&work_path).join("unmapped_1.fq")).unwrap());
     let mut out_2 = BufWriter::new(File::create(Path::new(&work_path).join("unmapped_2.fq")).unwrap());
