@@ -4,23 +4,20 @@ from pathlib import Path
 from typing import List
 
 import aiofiles
+import rust
 from virtool_core.bio import (
-    read_fastq_headers,
-    read_fastq_from_path,
     find_orfs,
     read_fasta,
 )
-from virtool_core.utils import compress_file, decompress_file
+from virtool_core.utils import compress_file
+from virtool_workflow import hooks
 from virtool_workflow import step
 from virtool_workflow.analysis.analysis import Analysis
 from virtool_workflow.analysis.hmms import HMMs
 from virtool_workflow.analysis.indexes import Index
-from virtool_workflow import hooks
 from virtool_workflow.analysis.reads import Reads
-from virtool_workflow.data_model import Subtraction, Sample
+from virtool_workflow.data_model import Subtraction
 from virtool_workflow.execution.run_in_executor import FunctionExecutor
-
-import rust
 
 
 @hooks.on_failure
