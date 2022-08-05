@@ -231,7 +231,10 @@ async def test_reunite_pairs(paired, run_in_executor, reads, sample, work_path):
             for line in unite["separate"]:
                 f.write(line + "\n")
 
-    await reunite_pairs(run_in_executor, reads, work_path)
+        assert reads.right.exists()
+
+    assert reads.left.exists()
+    await reunite_pairs(reads, work_path)
 
     if paired:
         for filename, key in [
@@ -258,9 +261,11 @@ async def test_assemble(
 
     if paired:
         for suffix in (1, 2):
+            filename = f"unmapped_{suffix}.fq"
+
             shutil.copy(
-                TEST_DATA_PATH / "unmapped_{}.fq".format(suffix),
-                work_path / "unmapped_{}.fq".format(suffix),
+                TEST_DATA_PATH / filename,
+                work_path / filename,
             )
     else:
         shutil.copy(TEST_DATA_PATH / "unmapped_1.fq", work_path / "unmapped_hosts.fq")
@@ -269,7 +274,7 @@ async def test_assemble(
         analysis, mem, proc, run_in_executor, run_subprocess, sample, work_path
     )
 
-    expected_path = TEST_DATA_PATH / "scaffolds_{}.fa".format("p" if paired else "u")
+    expected_path = TEST_DATA_PATH / f"scaffolds_{'p' if paired else 'u'}.fa"
     scaffolds_path = work_path / "spades/scaffolds.fasta"
     compressed_path = work_path / "assembly.fa.gz"
 

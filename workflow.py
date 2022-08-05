@@ -4,20 +4,19 @@ from pathlib import Path
 from typing import List
 
 import aiofiles
+import rust
 from virtool_core.bio import (
-    read_fastq_headers,
-    read_fastq_from_path,
     find_orfs,
     read_fasta,
 )
-from virtool_core.utils import compress_file, decompress_file
+from virtool_core.utils import compress_file
+from virtool_workflow import hooks
 from virtool_workflow import step
 from virtool_workflow.analysis.analysis import Analysis
 from virtool_workflow.analysis.hmms import HMMs
 from virtool_workflow.analysis.indexes import Index
-from virtool_workflow import hooks
 from virtool_workflow.analysis.reads import Reads
-from virtool_workflow.data_model import Subtraction, Sample
+from virtool_workflow.data_model import Subtraction
 from virtool_workflow.execution.run_in_executor import FunctionExecutor
 
 
@@ -101,32 +100,17 @@ async def eliminate_subtraction(
 
 
 @step
-async def reunite_pairs(run_in_executor, reads: Reads, work_path: Path):
+async def reunite_pairs(reads: Reads, work_path: Path):
     """
     Reunite paired reads after elimination.
     """
     if reads.sample.paired:
-        headers = await read_fastq_headers(work_path / "unmapped_hosts.fq")
-
-        unmapped_roots = {h.split(" ")[0] for h in headers}
-
-        for path in (reads.left, reads.right):
-
-            await run_in_executor(decompress_file, path, path.with_suffix(".fq"))
-
-        async with aiofiles.open(work_path / "unmapped_1.fq", "w") as f:
-            async for header, seq, quality in read_fastq_from_path(
-                reads.left.with_suffix(".fq")
-            ):
-                if header.split(" ")[0] in unmapped_roots:
-                    await f.write("\n".join([header, seq, "+", quality]) + "\n")
-
-        async with aiofiles.open(work_path / "unmapped_2.fq", "w") as f:
-            async for header, seq, quality in read_fastq_from_path(
-                reads.right.with_suffix(".fq")
-            ):
-                if header.split(" ")[0] in unmapped_roots:
-                    await f.write("\n".join([header, seq, "+", quality]) + "\n")
+        rs_reads = rust.Reads(
+            reads.sample.paired, 
+            str(reads.left.absolute()), 
+            str(reads.right.absolute()), 
+            str(work_path/"unmapped_hosts.fq"))
+        rust.reunite_pairs(rs_reads, str(work_path))
 
 
 @step
