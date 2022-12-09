@@ -2,15 +2,14 @@ import asyncio
 import collections
 import shlex
 from pathlib import Path
-from pprint import pprint
 from typing import List
 
 import aiofiles
+import rust
 from virtool_core.bio import (
     find_orfs,
     read_fasta,
 )
-import rust
 from virtool_core.utils import compress_file
 from virtool_workflow import hooks
 from virtool_workflow import step
@@ -64,10 +63,7 @@ async def eliminate_otus(
         ",".join(paths),
     ]
 
-    async def handler(line):
-        print(line)
-
-    await run_subprocess(command, stderr_handler=handler)
+    await run_subprocess(command)
 
 
 @step
@@ -152,10 +148,7 @@ async def assemble(
 
     command += ["-o", str(spades_path), "-k", k]
 
-    async def handler(line):
-        print(line)
-
-    await run_subprocess(command, stderr_handler=handler)
+    await run_subprocess(command)
 
     compressed_assembly_path = work_path / "assembly.fa.gz"
 

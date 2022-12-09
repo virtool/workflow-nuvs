@@ -22,4 +22,4 @@ RUN ln -fs /opt/spades/bin/spades.py /usr/local/bin/spades.py
 
 FROM base as test
 COPY tests ./tests/
-RUN poetry run pytest
+RUN poetry run pytest --cache-clear
