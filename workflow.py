@@ -1,23 +1,24 @@
+import asyncio
 import collections
 import shlex
 from pathlib import Path
+from pprint import pprint
 from typing import List
 
 import aiofiles
-import rust
 from virtool_core.bio import (
     find_orfs,
     read_fasta,
 )
+import rust
 from virtool_core.utils import compress_file
 from virtool_workflow import hooks
 from virtool_workflow import step
-from virtool_workflow.analysis.analysis import Analysis
 from virtool_workflow.analysis.hmms import HMMs
-from virtool_workflow.analysis.indexes import Index
 from virtool_workflow.analysis.reads import Reads
-from virtool_workflow.data_model import Subtraction
-from virtool_workflow.execution.run_in_executor import FunctionExecutor
+from virtool_workflow.data_model.analysis import WFAnalysis
+from virtool_workflow.data_model.indexes import WFIndex
+from virtool_workflow.data_model.subtractions import WFSubtraction
 
 
 @hooks.on_failure
@@ -32,7 +33,7 @@ async def upload_result(analysis_provider, results):
 
 @step(name="Eliminate OTUs")
 async def eliminate_otus(
-    indexes: List[Index], proc: int, reads: Reads, run_subprocess, work_path: Path
+    indexes: List[WFIndex], proc: int, reads: Reads, run_subprocess, work_path: Path
 ):
     """
     Map sample reads to reference OTUs and discard.
@@ -63,13 +64,15 @@ async def eliminate_otus(
         ",".join(paths),
     ]
 
-    reads_path = work_path / "reads"
-    p = await run_subprocess(command)
+    async def handler(line):
+        print(line)
+
+    await run_subprocess(command, stderr_handler=handler)
 
 
 @step
 async def eliminate_subtraction(
-    proc: int, run_subprocess, subtractions: List[Subtraction], work_path: Path
+    proc: int, run_subprocess, subtractions: List[WFSubtraction], work_path: Path
 ):
     """
     Map remaining reads to the subtraction and discard.
@@ -106,19 +109,20 @@ async def reunite_pairs(reads: Reads, work_path: Path):
     """
     if reads.sample.paired:
         rs_reads = rust.Reads(
-            reads.sample.paired, 
-            str(reads.left.absolute()), 
-            str(reads.right.absolute()), 
-            str(work_path/"unmapped_hosts.fq"))
+            reads.sample.paired,
+            str(reads.left.absolute()),
+            str(reads.right.absolute()),
+            str(work_path / "unmapped_hosts.fq"),
+        )
+
         rust.reunite_pairs(rs_reads, str(work_path))
 
 
 @step
 async def assemble(
-    analysis: Analysis,
+    analysis: WFAnalysis,
     mem: int,
     proc: int,
-    run_in_executor,
     run_subprocess,
     sample,
     work_path: Path,
@@ -148,12 +152,18 @@ async def assemble(
 
     command += ["-o", str(spades_path), "-k", k]
 
-    await run_subprocess(command)
+    async def handler(line):
+        print(line)
+
+    await run_subprocess(command, stderr_handler=handler)
 
     compressed_assembly_path = work_path / "assembly.fa.gz"
 
-    await run_in_executor(
-        compress_file, spades_path / "scaffolds.fasta", compressed_assembly_path
+    await asyncio.to_thread(
+        compress_file,
+        spades_path / "scaffolds.fasta",
+        compressed_assembly_path,
+        processes=proc,
     )
 
     analysis.upload(compressed_assembly_path, "fasta")
@@ -161,10 +171,9 @@ async def assemble(
 
 @step
 async def process_fasta(
-    analysis: Analysis,
+    analysis: WFAnalysis,
     proc: int,
     results: dict,
-    run_in_executor: FunctionExecutor,
     work_path: Path,
 ):
     """
@@ -176,7 +185,7 @@ async def process_fasta(
     """
     assembly_path = work_path / "spades/scaffolds.fasta"
 
-    assembly = await run_in_executor(read_fasta, assembly_path)
+    assembly = await asyncio.to_thread(read_fasta, assembly_path)
 
     sequences = list()
 
@@ -216,7 +225,9 @@ async def process_fasta(
 
     compressed_orfs_path = Path(f"{orfs_path}.gz")
 
-    await run_in_executor(compress_file, orfs_path, compressed_orfs_path)
+    await asyncio.to_thread(
+        compress_file, orfs_path, compressed_orfs_path, processes=proc
+    )
 
     analysis.upload(compressed_orfs_path, "fasta")
 
@@ -225,7 +236,7 @@ async def process_fasta(
 
 @step(name="VFam")
 async def vfam(
-    analysis: Analysis,
+    analysis: WFAnalysis,
     hmms: HMMs,
     proc: int,
     results: dict,

@@ -5,22 +5,25 @@ from pathlib import Path
 from shutil import copytree
 from typing import List
 
+import arrow
 import pytest
-import virtool_workflow.execution.run_subprocess
+import virtool_workflow.runtime.run_subprocess
 from Bio import SeqIO
 from aiohttp.test_utils import make_mocked_coro
-from virtool_workflow.analysis.analysis import Analysis
+from pydantic_factories import ModelFactory
+from virtool_core.models.hmm import HMM
+from virtool_core.models.index import Index
+from virtool_core.models.job import JobNested
+from virtool_core.models.reference import ReferenceNested, ReferenceDataType
+from virtool_core.models.samples import Sample
+from virtool_core.models.subtraction import NucleotideComposition, SubtractionUpload
+from virtool_core.models.user import UserNested
 from virtool_workflow.analysis.hmms import HMMs
-from virtool_workflow.analysis.indexes import Index
-from virtool_workflow.analysis.library_types import LibraryType
 from virtool_workflow.analysis.reads import Reads
-from virtool_workflow.data_model import (
-    NucleotideComposition,
-    Subtraction,
-    Reference,
-    Sample,
-    HMM,
-)
+from virtool_workflow.data_model.analysis import WFAnalysis
+from virtool_workflow.data_model.indexes import WFIndex
+from virtool_workflow.data_model.samples import WFSample
+from virtool_workflow.data_model.subtractions import WFSubtraction
 
 from workflow import (
     eliminate_otus,
@@ -43,16 +46,8 @@ def work_path(tmpdir):
 
 
 @pytest.fixture
-def run_in_executor():
-    async def _run_in_executor(func, *args):
-        return func(*args)
-
-    return _run_in_executor
-
-
-@pytest.fixture
 def run_subprocess():
-    return virtool_workflow.execution.run_subprocess.run_subprocess()
+    return virtool_workflow.runtime.run_subprocess.run_subprocess()
 
 
 @pytest.fixture
@@ -69,11 +64,10 @@ def hmms(work_path: Path):
             entries=list(),
             families=dict(),
             genera=dict(),
-            hidden=False,
             length=42,
             mean_entropy=0.0001,
             total_entropy=0.0001,
-            names=("Test", "Foo", "Bar"),
+            names=["Test", "Foo", "Bar"],
         ),
         HMM(
             id="bar",
@@ -82,11 +76,10 @@ def hmms(work_path: Path):
             entries=list(),
             families=dict(),
             genera=dict(),
-            hidden=False,
             length=42,
             mean_entropy=0.0001,
             total_entropy=0.0001,
-            names=("Test", "Foo", "Bar"),
+            names=["Test", "Foo", "Bar"],
         ),
     ]
 
@@ -94,7 +87,7 @@ def hmms(work_path: Path):
 
 
 @pytest.fixture
-def indexes(run_in_executor, run_subprocess, work_path) -> List[Index]:
+def indexes(run_subprocess, work_path) -> List[WFIndex]:
     index_path = work_path / "references"
     index_path.mkdir(parents=True)
 
@@ -102,38 +95,32 @@ def indexes(run_in_executor, run_subprocess, work_path) -> List[Index]:
 
     shutil.copytree(INDEX_PATH, index_path)
 
-    reference = Reference(
-        id="reference_1",
-        data_type="genome",
-        description="Reference 1",
-        name="Reference 1",
-        organism="viruses",
-    )
+    class IndexFactory(ModelFactory):
+        __model__ = Index
 
-    index = Index(
-        "foo", dict(), reference, True, index_path, run_in_executor, run_subprocess
-    )
-
-    return [index]
-
-
-@pytest.fixture
-async def sample():
-    return Sample(
-        id="sample",
-        name="Sample 1",
-        host="",
-        isolate="",
-        locale="",
-        library_type=LibraryType.other,
-        paired=False,
-        quality=dict(),
-        nuvs=False,
-    )
+    return [
+        WFIndex(
+            IndexFactory.build(),
+            index_path,
+            make_mocked_coro(),
+            make_mocked_coro(),
+            run_subprocess,
+        )
+    ]
 
 
 @pytest.fixture
-async def reads(sample: Sample, work_path: Path):
+async def sample() -> WFSample:
+    class SampleFactory(ModelFactory):
+        __model__ = Sample
+
+    _sample = WFSample.parse_obj(SampleFactory.build())
+
+    return _sample
+
+
+@pytest.fixture
+async def reads(sample: WFSample, work_path: Path):
     reads_path = work_path / "reads"
     reads_path.mkdir(parents=True)
 
@@ -144,18 +131,23 @@ async def reads(sample: Sample, work_path: Path):
 
 @pytest.fixture
 async def analysis(
-    indexes: List[Index], sample: Sample, subtractions: List[Subtraction]
+    indexes: List[Index], sample: WFSample, subtractions: List[WFSubtraction]
 ):
-    upload_files = make_mocked_coro()
-
-    return Analysis(
-        upload_files,
+    return WFAnalysis(
+        make_mocked_coro(),
         id="foo",
+        created_at=arrow.utcnow().naive,
         files=[],
-        sample=sample,
-        index=indexes[0],
-        subtractions=subtractions,
+        index=indexes[0].index,
+        job=JobNested(id="bar"),
         ready=True,
+        reference=ReferenceNested(
+            id="ref", data_type=ReferenceDataType.genome, name="Reference 1"
+        ),
+        sample=sample,
+        subtractions=subtractions,
+        user=UserNested(id="abc12345", handle="bob", administrator=False),
+        workflow="nuvs",
     )
 
 
@@ -168,23 +160,22 @@ async def subtractions(work_path):
 
     copytree(SUBTRACTION_PATH, subtraction_path)
 
-    nucleotide_composition = NucleotideComposition(
-        a=0.1,
-        t=0.2,
-        g=0.3,
-        c=0.4,
-    )
-
-    subtraction = Subtraction(
-        id="arabidopsis_thaliana",
-        name="Arabidopsis thaliana",
-        nickname="Thalecress",
-        count=12,
-        gc=nucleotide_composition,
-        path=subtraction_path,
-    )
-
-    return [subtraction]
+    return [
+        WFSubtraction(
+            id="arabidopsis_thaliana",
+            count=12,
+            created_at=arrow.utcnow().naive,
+            file=SubtractionUpload(id=12, name="arabidopsis.fa.gz"),
+            files=[],
+            gc=NucleotideComposition(a=0.1, t=0.2, g=0.3, c=0.4, n=0.0),
+            linked_samples=[],
+            path=subtraction_path,
+            name="Arabidopsis thaliana",
+            nickname="Thalecress",
+            ready=True,
+            user=UserNested(administrator=False, id="bob", handle="Bob"),
+        )
+    ]
 
 
 async def test_eliminate_otus(indexes, reads: Reads, run_subprocess, work_path: Path):
@@ -205,13 +196,15 @@ async def test_eliminate_otus(indexes, reads: Reads, run_subprocess, work_path: 
     assert actual == expected
 
 
-async def test_eliminate_subtraction(run_subprocess, subtractions, work_path):
+async def test_eliminate_subtraction(
+    run_subprocess, subtractions: List[WFSubtraction], work_path
+):
     shutil.copy(TEST_DATA_PATH / "unmapped_otus.fq", work_path / "unmapped_otus.fq")
     await eliminate_subtraction(2, run_subprocess, subtractions, work_path)
 
 
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
-async def test_reunite_pairs(paired, run_in_executor, reads, sample, work_path):
+async def test_reunite_pairs(paired, reads: Reads, sample: WFSample, work_path):
     if paired:
         sample.paired = paired
 
@@ -234,6 +227,10 @@ async def test_reunite_pairs(paired, run_in_executor, reads, sample, work_path):
         assert reads.right.exists()
 
     assert reads.left.exists()
+
+    if paired:
+        assert reads.right.exists()
+
     await reunite_pairs(reads, work_path)
 
     if paired:
@@ -248,9 +245,8 @@ async def test_reunite_pairs(paired, run_in_executor, reads, sample, work_path):
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
 async def test_assemble(
     paired: bool,
-    analysis: Analysis,
+    analysis: WFAnalysis,
     sample: Sample,
-    run_in_executor,
     run_subprocess,
     work_path: Path,
 ):
@@ -270,9 +266,7 @@ async def test_assemble(
     else:
         shutil.copy(TEST_DATA_PATH / "unmapped_1.fq", work_path / "unmapped_hosts.fq")
 
-    await assemble(
-        analysis, mem, proc, run_in_executor, run_subprocess, sample, work_path
-    )
+    await assemble(analysis, mem, proc, run_subprocess, sample, work_path)
 
     expected_path = TEST_DATA_PATH / f"scaffolds_{'p' if paired else 'u'}.fa"
     scaffolds_path = work_path / "spades/scaffolds.fasta"
@@ -293,14 +287,13 @@ async def test_assemble(
             (record.id, record.seq) for record in SeqIO.parse(f, "fasta")
         } == expected
 
-    assert analysis.to_upload == [(compressed_path, "fasta")]
+    assert analysis._to_upload == [(compressed_path, "fasta")]
 
 
 async def test_process_fasta(
     data_regression,
     file_regression,
-    analysis: Analysis,
-    run_in_executor,
+    analysis: WFAnalysis,
     work_path: Path,
 ):
     spades_path = work_path / "spades"
@@ -310,7 +303,7 @@ async def test_process_fasta(
 
     results = dict()
 
-    await process_fasta(analysis, 2, results, run_in_executor, work_path)
+    await process_fasta(analysis, 2, results, work_path)
 
     data_regression.check(results)
 
@@ -319,7 +312,7 @@ async def test_process_fasta(
 
 
 async def test_vfam(
-    data_regression, analysis: Analysis, hmms: HMMs, run_subprocess, work_path: Path
+    data_regression, analysis: WFAnalysis, hmms: HMMs, run_subprocess, work_path: Path
 ):
     with open(work_path / "orfs.fa", "w") as f:
         f.write(">sequence_0.0\n")
