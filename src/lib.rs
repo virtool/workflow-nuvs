@@ -1,10 +1,10 @@
 use pyo3::prelude::*;
-use std::fs::File;
-use std::io::{BufRead, BufReader, BufWriter};
-use std::process::Command;
-use std::path::Path;
 use std::collections::HashSet;
+use std::fs::File;
 use std::io::Write;
+use std::io::{BufRead, BufReader, BufWriter};
+use std::path::Path;
+use std::process::Command;
 
 #[pyclass]
 #[derive(Clone)]
@@ -16,37 +16,39 @@ struct Reads {
     #[pyo3(get, set)]
     pub right: String,
     #[pyo3(get, set)]
-    pub unmapped_hosts: String,
+    pub unmapped_subtractions: String,
 }
 
 #[pymethods]
 impl Reads {
     #[new]
-    fn new(
-        paired: bool, 
-        left: String, 
-        right: String, 
-        unmapped_hosts: String
-    ) -> Self  {
-        Self { paired, left, right, unmapped_hosts }
+    fn new(paired: bool, left: String, right: String, unmapped_subtractions: String) -> Self {
+        Self {
+            paired,
+            left,
+            right,
+            unmapped_subtractions,
+        }
     }
 }
 
 #[derive(Debug)]
-struct FastqRecord{
+struct FastqRecord {
     header: String,
     seq: String,
     quality: String,
 }
 
-
 impl FastqRecord {
     fn to_fastq(&self) -> String {
-        format!("{}\n{}\n{}\n{}\n", &self.header, &self.seq, "+", &self.quality)
+        format!(
+            "{}\n{}\n{}\n{}\n",
+            &self.header, &self.seq, "+", &self.quality
+        )
     }
 }
 
-fn read_fastq(reader: BufReader<File>) -> Vec<FastqRecord>{
+fn read_fastq(reader: BufReader<File>) -> Vec<FastqRecord> {
     let mut records = Vec::new();
 
     let mut has_plus = false;
@@ -60,10 +62,9 @@ fn read_fastq(reader: BufReader<File>) -> Vec<FastqRecord>{
         if head == '+' {
             has_plus = true;
             continue;
-        } 
-        
-        if !has_plus {
+        }
 
+        if !has_plus {
             if head == '@' {
                 header = line.trim().to_string();
                 continue;
@@ -71,12 +72,12 @@ fn read_fastq(reader: BufReader<File>) -> Vec<FastqRecord>{
 
             seq = line.trim().to_string();
             continue;
-        } 
+        }
 
         if has_plus {
-            records.push(FastqRecord{ 
+            records.push(FastqRecord {
                 header: header.to_string(),
-                seq: seq.to_string(), 
+                seq: seq.to_string(),
                 quality: line.trim().to_string(),
             });
             has_plus = false;
@@ -100,9 +101,8 @@ fn read_fastq_headers(filename: &str) -> HashSet<String> {
         if head == '+' {
             has_plus = true;
             continue;
-        } 
+        }
 
-        
         if head == '@' {
             let header_start = line.trim().split(' ').collect::<Vec<&str>>()[0];
             headers.insert(header_start.to_string());
@@ -116,7 +116,6 @@ fn read_fastq_headers(filename: &str) -> HashSet<String> {
     headers
 }
 
-
 fn unzip_gz(filename: &str, target: &str) -> BufReader<File> {
     let target_file = File::create(target).expect("Could not create unzipped file");
 
@@ -129,20 +128,16 @@ fn unzip_gz(filename: &str, target: &str) -> BufReader<File> {
         .arg("-k")
         .arg(filename)
         .stdout(target_file);
-        
-    command
-        .output()
-        .expect("Failed to decompress with pigz");
 
+    command.output().expect("Failed to decompress with pigz");
 
     let read_file = File::open(target).expect("File not found");
     BufReader::new(read_file)
 }
 
-
 #[pyfunction]
 fn reunite_pairs(reads: Reads, work_path: String) -> PyResult<Py<Reads>> {
-    let unmapped_roots: HashSet<String> = read_fastq_headers(&reads.unmapped_hosts);
+    let unmapped_roots: HashSet<String> = read_fastq_headers(&reads.unmapped_subtractions);
 
     let b = Path::new(&reads.left).exists();
     let b2 = Path::new(&reads.right).exists();
@@ -150,8 +145,10 @@ fn reunite_pairs(reads: Reads, work_path: String) -> PyResult<Py<Reads>> {
     let reads_left = unzip_gz(&reads.left, &reads.left.replace(".gz", ""));
     let reads_right = unzip_gz(&reads.right, &reads.right.replace(".gz", ""));
 
-    let mut out_1 = BufWriter::new(File::create(Path::new(&work_path).join("unmapped_1.fq")).unwrap());
-    let mut out_2 = BufWriter::new(File::create(Path::new(&work_path).join("unmapped_2.fq")).unwrap());
+    let mut out_1 =
+        BufWriter::new(File::create(Path::new(&work_path).join("unmapped_1.fq")).unwrap());
+    let mut out_2 =
+        BufWriter::new(File::create(Path::new(&work_path).join("unmapped_2.fq")).unwrap());
 
     let records_left = read_fastq(reads_left);
     let records_right = read_fastq(reads_right);
