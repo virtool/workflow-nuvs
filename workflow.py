@@ -72,9 +72,16 @@ async def eliminate_subtraction(
 ):
     """
     Map remaining reads to the subtraction and discard.
+    
+    Reads that were not mapped to the reference OTUs in the previous step
+    (`unmapped_otus.fq`) are mapped against the subtraction. Reads with no
+    alignment against the subtraction (`unmapped_hosts.fq`) are carried
+    forward into the next step.
 
     Bowtie2 is set to use the search parameter ``--very-fast-local`` and retain
-    unaligned reads to the FASTQ file ``unmapped_host.fq``.
+    unaligned reads to the FASTQ file ``unmapped_host.fq``. Providing the `--un`
+    option to Bowtie2 writes any unmapped reads to the path provided with the
+    option.
 
     """
     if len(subtractions) == 0:
