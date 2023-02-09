@@ -132,6 +132,7 @@ async def reunite_pairs(reads: Reads, work_path: Path):
         )
 
         rust.reunite_pairs(rs_reads, str(work_path))
+        pass
 
 
 @step
