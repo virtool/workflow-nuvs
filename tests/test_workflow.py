@@ -174,7 +174,21 @@ async def subtractions(work_path):
             nickname="Thalecress",
             ready=True,
             user=UserNested(administrator=False, id="bob", handle="Bob"),
-        )
+        ),
+        WFSubtraction(
+            id="arabidopsis_thaliana",
+            count=12,
+            created_at=arrow.utcnow().naive,
+            file=SubtractionUpload(id=12, name="arabidopsis.fa.gz"),
+            files=[],
+            gc=NucleotideComposition(a=0.1, t=0.2, g=0.3, c=0.4, n=0.0),
+            linked_samples=[],
+            path=subtraction_path,
+            name="Arabidopsis thaliana",
+            nickname="Thalecress",
+            ready=True,
+            user=UserNested(administrator=False, id="bob", handle="Bob"),
+        ),
     ]
 
 
@@ -218,7 +232,7 @@ async def test_reunite_pairs(paired, reads: Reads, sample: WFSample, work_path):
                 for line in unite[key]:
                     f.write(line + "\n")
 
-        separate_path = work_path / "unmapped_hosts.fq"
+        separate_path = work_path / "unmapped_subtractions.fq"
 
         with open(separate_path, "w") as f:
             for line in unite["separate"]:
@@ -264,7 +278,9 @@ async def test_assemble(
                 work_path / filename,
             )
     else:
-        shutil.copy(TEST_DATA_PATH / "unmapped_1.fq", work_path / "unmapped_hosts.fq")
+        shutil.copy(
+            TEST_DATA_PATH / "unmapped_1.fq", work_path / "unmapped_subtractions.fq"
+        )
 
     await assemble(analysis, mem, proc, run_subprocess, sample, work_path)
 
