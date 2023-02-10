@@ -1,5 +1,6 @@
 import gzip
 import json
+import logging
 import shutil
 from pathlib import Path
 from shutil import copytree
@@ -120,6 +121,7 @@ async def sample() -> WFSample:
         __model__ = Sample
 
         library_type = Use(lambda: LibraryType.normal)
+        paired = Use(lambda: False)
 
     _sample = WFSample.parse_obj(SampleFactory.build())
 
@@ -201,8 +203,12 @@ async def subtractions(work_path):
     ]
 
 
-async def test_eliminate_otus(indexes, reads: Reads, run_subprocess, work_path: Path):
-    await eliminate_otus(indexes, 2, reads, run_subprocess, work_path)
+async def test_eliminate_otus(
+    caplog, indexes, reads: Reads, run_subprocess, work_path: Path
+):
+    caplog.set_level(logging.INFO)
+
+    await eliminate_otus(indexes, 1, reads, run_subprocess, work_path)
 
     actual_path = work_path / "unmapped_otus.fq"
 
