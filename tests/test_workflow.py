@@ -10,7 +10,9 @@ import pytest
 import virtool_workflow.runtime.run_subprocess
 from Bio import SeqIO
 from aiohttp.test_utils import make_mocked_coro
-from pydantic_factories import ModelFactory
+from faker import Faker
+from pydantic_factories import ModelFactory, Use
+from virtool_core.models.enums import LibraryType
 from virtool_core.models.hmm import HMM
 from virtool_core.models.index import Index
 from virtool_core.models.job import JobNested
@@ -111,8 +113,13 @@ def indexes(run_subprocess, work_path) -> List[WFIndex]:
 
 @pytest.fixture
 async def sample() -> WFSample:
+    faker = Faker()
+
     class SampleFactory(ModelFactory):
+        __faker__ = faker
         __model__ = Sample
+
+        library_type = Use(lambda: LibraryType.normal)
 
     _sample = WFSample.parse_obj(SampleFactory.build())
 
@@ -156,35 +163,37 @@ async def subtractions(work_path):
     subtractions_path = work_path / "subtractions"
     subtractions_path.mkdir(parents=True)
 
-    subtraction_path = work_path / "subtractions" / "subtraction"
+    path_1 = work_path / "subtractions" / "arabidopsis_thaliana_1"
+    path_2 = work_path / "subtractions" / "arabidopsis_thaliana_2"
 
-    copytree(SUBTRACTION_PATH, subtraction_path)
+    copytree(SUBTRACTION_PATH, path_1)
+    copytree(SUBTRACTION_PATH, path_2)
 
     return [
         WFSubtraction(
-            id="arabidopsis_thaliana",
+            id="arabidopsis_thaliana_1",
             count=12,
             created_at=arrow.utcnow().naive,
             file=SubtractionUpload(id=12, name="arabidopsis.fa.gz"),
             files=[],
             gc=NucleotideComposition(a=0.1, t=0.2, g=0.3, c=0.4, n=0.0),
             linked_samples=[],
-            path=subtraction_path,
-            name="Arabidopsis thaliana",
+            path=path_1,
+            name="Arabidopsis thaliana 1",
             nickname="Thalecress",
             ready=True,
             user=UserNested(administrator=False, id="bob", handle="Bob"),
         ),
         WFSubtraction(
-            id="arabidopsis_thaliana",
+            id="arabidopsis_thaliana_2",
             count=12,
             created_at=arrow.utcnow().naive,
             file=SubtractionUpload(id=12, name="arabidopsis.fa.gz"),
             files=[],
             gc=NucleotideComposition(a=0.1, t=0.2, g=0.3, c=0.4, n=0.0),
             linked_samples=[],
-            path=subtraction_path,
-            name="Arabidopsis thaliana",
+            path=path_2,
+            name="Arabidopsis thaliana 2",
             nickname="Thalecress",
             ready=True,
             user=UserNested(administrator=False, id="bob", handle="Bob"),
@@ -265,10 +274,11 @@ async def test_assemble(
     run_subprocess,
     work_path: Path,
 ):
+
     sample.paired = paired
 
-    proc = 2
-    mem = 10
+    proc = 1
+    mem = 5
 
     if paired:
         for suffix in (1, 2):

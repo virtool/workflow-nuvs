@@ -22,13 +22,6 @@ RUN pip install --user biopython
 COPY --from=rust /build/target/wheels/nuvs_rust*.whl ./
 RUN pip install --user nuvs_rust*.whl
 
-FROM virtool/workflow:5.2.1 as base
-WORKDIR /workflow
-COPY --from=spades /build/spades /opt/spades
-ENV PATH="/opt/spades/bin:${PATH}"
-COPY --from=pip /root/.local /root/.local
-COPY workflow.py /workflow/workflow.py
-
 FROM virtool/workflow:5.2.1 as test
 WORKDIR /workflow
 COPY --from=spades /build/spades /opt/spades
@@ -38,3 +31,10 @@ COPY workflow.py /workflow/workflow.py
 RUN pip install --user pytest pytest-asyncio==0.15.1 pytest-aiohttp==0.3.0 pytest-regressions pydantic-factories pytest-rerunfailures
 COPY tests ./tests
 ENTRYPOINT ["pytest"]
+
+FROM virtool/workflow:5.2.1 as base
+WORKDIR /workflow
+COPY --from=spades /build/spades /opt/spades
+ENV PATH="/opt/spades/bin:${PATH}"
+COPY --from=pip /root/.local /root/.local
+COPY workflow.py /workflow/workflow.py
