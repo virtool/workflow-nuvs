@@ -4,6 +4,9 @@ on:
   release:
     types: [published]
 
+env:
+  REGISTRY: ghcr.io
+
 jobs:
   dockerhub:
     runs-on: ubuntu-22.04
