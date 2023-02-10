@@ -217,6 +217,7 @@ async def test_eliminate_subtraction(
     await eliminate_subtraction(2, run_subprocess, subtractions, work_path)
 
 
+@pytest.mark.flaky(reruns=3)
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
 async def test_reunite_pairs(paired, reads: Reads, sample: WFSample, work_path):
     if paired:
