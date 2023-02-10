@@ -32,7 +32,7 @@ RUN pip install --user pytest pytest-asyncio==0.15.1 pytest-aiohttp==0.3.0 pytes
 COPY tests ./tests
 ENTRYPOINT ["pytest"]
 
-FROM virtool/workflow:5.2.1 as base
+FROM virtool/workflow:5.3.0 as base
 WORKDIR /workflow
 COPY --from=spades /build/spades /opt/spades
 ENV PATH="/opt/spades/bin:${PATH}"
