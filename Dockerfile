@@ -1,4 +1,4 @@
-FROM virtool/workflow:5.2.1 as spades
+FROM virtool/workflow:5.3.0 as spades
 WORKDIR /build
 RUN wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0-Linux.tar.gz
 RUN tar -xvf SPAdes-3.11.0-Linux.tar.gz
@@ -17,7 +17,12 @@ COPY Cargo.toml Cargo.lock ./
 RUN maturin build --release
 RUN mv target/wheels/nuvs_rust*.whl ./
 
-FROM virtool/workflow:5.2.1 as base
+FROM base as test
+ADD tests ./tests
+RUN pip install pytest pytest-asyncio==0.15.1 pytest-aiohttp==0.3.0 pytest-xdist pytest-regressions pydantic-factories
+RUN pytest
+
+FROM virtool/workflow:5.3.0 as base
 WORKDIR /workflow
 COPY workflow.py /workflow/workflow.py
 RUN pip install --upgrade pip
@@ -25,8 +30,3 @@ COPY --from=rust /build/nuvs_rust*.whl .
 RUN pip install biopython maturin nuvs_rust*.whl
 COPY --from=spades /build/spades /opt/spades
 ENV PATH="/opt/spades/bin:${PATH}"
-
-FROM base as test
-ADD tests ./tests
-RUN pip install pytest pytest-asyncio==0.15.1 pytest-aiohttp==0.3.0 pytest-xdist pytest-regressions pydantic-factories
-RUN pytest
