@@ -72,7 +72,7 @@ async def eliminate_subtraction(
 ):
     """
     Map remaining reads to the subtraction and discard.
-    
+
     Reads that were not mapped to the reference OTUs in the previous step
     (`unmapped_otus.fq`) are mapped against the subtraction. Reads with no
     alignment against the subtraction (`unmapped_hosts.fq`) are carried
