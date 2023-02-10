@@ -1,6 +1,7 @@
 import asyncio
 import collections
 import shlex
+import shutil
 from pathlib import Path
 from typing import List
 
@@ -38,7 +39,7 @@ async def eliminate_otus(
     Map sample reads to reference OTUs and discard.
 
     Bowtie2 is set to use the search parameter ``--very-fast-local`` and retain
-    unaligned reads to the FASTQ file ``unmapped_host.fq``.
+    unaligned reads to the FASTQ file ``unmapped_subtraction.fq``.
 
     """
     index_path = str(indexes[0].bowtie_path)
@@ -75,34 +76,46 @@ async def eliminate_subtraction(
 
     Reads that were not mapped to the reference OTUs in the previous step
     (`unmapped_otus.fq`) are mapped against the subtraction. Reads with no
-    alignment against the subtraction (`unmapped_hosts.fq`) are carried
+    alignment against the subtraction (`unmapped_subtractions.fq`) are carried
     forward into the next step.
 
     Bowtie2 is set to use the search parameter ``--very-fast-local`` and retain
-    unaligned reads to the FASTQ file ``unmapped_host.fq``. Providing the `--un`
+    unaligned reads to the FASTQ file ``unmapped_subtraction.fq``. Providing the `--un`
     option to Bowtie2 writes any unmapped reads to the path provided with the
     option.
 
     """
+
     if len(subtractions) == 0:
         return
 
-    command = [
-        "bowtie2",
-        "--very-fast-local",
-        "-k",
-        str(1),
-        "-p",
-        str(proc),
-        "-x",
-        shlex.quote(str(subtractions[0].bowtie2_index_path)),
-        "--un",
-        str(work_path / "unmapped_hosts.fq"),
-        "-U",
-        str(work_path / "unmapped_otus.fq"),
-    ]
+    await asyncio.to_thread(
+        shutil.copyfile, work_path / "unmapped_otus.fq", work_path / "working_otus.fq"
+    )
 
-    await run_subprocess(command)
+    for subtraction in subtractions:
+        command = [
+            "bowtie2",
+            "--very-fast-local",
+            "-k",
+            str(1),
+            "-p",
+            str(proc),
+            "-x",
+            shlex.quote(str(subtraction.bowtie2_index_path)),
+            "--un",
+            str(work_path / "unmapped_subtraction.fq"),
+            "-U",
+            str(work_path / "working_otus.fq"),
+        ]
+
+        await run_subprocess(command)
+
+        await asyncio.to_thread(
+            shutil.copyfile,
+            work_path / "unmapped_subtraction.fq",
+            work_path / "working_otus.fq",
+        )
 
 
 @step
@@ -115,7 +128,7 @@ async def reunite_pairs(reads: Reads, work_path: Path):
             reads.sample.paired,
             str(reads.left.absolute()),
             str(reads.right.absolute()),
-            str(work_path / "unmapped_hosts.fq"),
+            str(work_path / "unmapped_subtractions.fq"),
         )
 
         rust.reunite_pairs(rs_reads, str(work_path))
@@ -143,7 +156,7 @@ async def assemble(
     else:
         command += [
             "-s",
-            str(work_path / "unmapped_hosts.fq"),
+            str(work_path / "unmapped_subtractions.fq"),
         ]
 
     k = "21,33,55,75"
