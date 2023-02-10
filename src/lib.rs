@@ -139,9 +139,6 @@ fn unzip_gz(filename: &str, target: &str) -> BufReader<File> {
 fn reunite_pairs(reads: Reads, work_path: String) -> PyResult<Py<Reads>> {
     let unmapped_roots: HashSet<String> = read_fastq_headers(&reads.unmapped_subtractions);
 
-    let b = Path::new(&reads.left).exists();
-    let b2 = Path::new(&reads.right).exists();
-
     let reads_left = unzip_gz(&reads.left, &reads.left.replace(".gz", ""));
     let reads_right = unzip_gz(&reads.right, &reads.right.replace(".gz", ""));
 
