@@ -16,12 +16,13 @@ jobs:
         uses: actions/checkout@v3
         with:
           fetch-depth: 0
-      - uses: wagoid/commitlint-github-action@v5
+      - name: commitlint
+        uses: wagoid/commitlint-github-action@v5
   test:
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
-      - uses: actions/checkout@v3
+        uses: actions/checkout@v3
       - name: Test
         run: docker build -t nuvs-test --target test . && docker run -it nuvs-test
   release:
