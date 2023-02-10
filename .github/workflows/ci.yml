@@ -24,7 +24,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v3
       - name: Test
-        run: docker build -t nuvs-test --target test . && docker run -it nuvs-test
+        run: docker build -t nuvs-test --target test . && docker run nuvs-test
   release:
     runs-on: ubuntu-22.04
     needs: [test, commitlint]
