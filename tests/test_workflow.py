@@ -225,11 +225,25 @@ async def test_eliminate_otus(
     assert actual == expected
 
 
+@pytest.mark.parametrize("no_subtractions", [True, False])
 async def test_eliminate_subtraction(
-    run_subprocess, subtractions: List[WFSubtraction], work_path
+    run_subprocess, subtractions: List[WFSubtraction], work_path, no_subtractions
 ):
+    if no_subtractions:
+        subtractions = []
+
     shutil.copy(TEST_DATA_PATH / "unmapped_otus.fq", work_path / "unmapped_otus.fq")
     await eliminate_subtraction(2, run_subprocess, subtractions, work_path)
+
+    assert Path(work_path / "unmapped_subtraction.fq").is_file()
+
+    if no_subtractions:
+        with open(work_path / "unmapped_subtraction.fq") as subtracted_file:
+            with open(work_path / "unmapped_otus.fq") as otu_file:
+                subtracted_lines = [line.strip() for line in subtracted_file]
+                otu_lines = [line.strip() for line in otu_file]
+                for subtracted, otu in zip(subtracted_lines, otu_lines):
+                    assert subtracted == otu
 
 
 @pytest.mark.flaky(reruns=3)
@@ -280,7 +294,6 @@ async def test_assemble(
     run_subprocess,
     work_path: Path,
 ):
-
     sample.paired = paired
 
     proc = 1

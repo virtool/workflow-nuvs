@@ -87,7 +87,11 @@ async def eliminate_subtraction(
     """
 
     if len(subtractions) == 0:
-        return
+        await asyncio.to_thread(
+            shutil.copyfile,
+            work_path / "unmapped_otus.fq",
+            work_path / "unmapped_subtraction.fq",
+        )
 
     await asyncio.to_thread(
         shutil.copyfile, work_path / "unmapped_otus.fq", work_path / "working_otus.fq"
@@ -104,7 +108,7 @@ async def eliminate_subtraction(
             "-x",
             shlex.quote(str(subtraction.bowtie2_index_path)),
             "--un",
-            str(work_path / "unmapped_subtractions.fq"),
+            str(work_path / "unmapped_subtraction.fq"),
             "-U",
             str(work_path / "working_otus.fq"),
         ]
@@ -113,7 +117,7 @@ async def eliminate_subtraction(
 
         await asyncio.to_thread(
             shutil.copyfile,
-            work_path / "unmapped_subtractions.fq",
+            work_path / "unmapped_subtraction.fq",
             work_path / "working_otus.fq",
         )
 

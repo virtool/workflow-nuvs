@@ -9,6 +9,8 @@ license = "MIT"
 python = "~3.10"
 biopython = "^1.79"
 virtool-workflow = "^5.0.0"
+rust = "^0.1.1"
+nuvs-rust = {path = "target/wheels/nuvs_rust-0.1.0-cp310-cp310-manylinux_2_31_x86_64.whl"}
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^6.2.4"
