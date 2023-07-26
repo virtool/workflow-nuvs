@@ -238,12 +238,13 @@ async def test_eliminate_subtraction(
     assert Path(work_path / "unmapped_subtraction.fq").is_file()
 
     if no_subtractions:
-        with open(work_path / "unmapped_subtraction.fq") as subtracted_file:
-            with open(work_path / "unmapped_otus.fq") as otu_file:
-                subtracted_lines = [line.strip() for line in subtracted_file]
-                otu_lines = [line.strip() for line in otu_file]
-                for subtracted, otu in zip(subtracted_lines, otu_lines):
-                    assert subtracted == otu
+        with open(work_path / "unmapped_subtraction.fq") as subtracted_file, open(
+            work_path / "unmapped_otus.fq"
+        ) as otu_file:
+            subtracted_lines = [line.strip() for line in subtracted_file]
+            otu_lines = [line.strip() for line in otu_file]
+            for subtracted, otu in zip(subtracted_lines, otu_lines):
+                assert subtracted == otu
 
 
 @pytest.mark.flaky(reruns=3)

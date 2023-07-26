@@ -22,7 +22,7 @@ RUN pip install --user biopython
 COPY --from=rust /build/target/wheels/nuvs_rust*.whl ./
 RUN pip install --user nuvs_rust*.whl
 
-FROM virtool/workflow:5.2.1 as test
+FROM python:3.10-buster as test
 WORKDIR /workflow
 COPY --from=spades /build/spades /opt/spades
 ENV PATH="/opt/spades/bin:${PATH}"
@@ -32,7 +32,7 @@ RUN pip install --user pytest pytest-asyncio==0.15.1 pytest-aiohttp==0.3.0 pytes
 COPY tests ./tests
 ENTRYPOINT ["pytest"]
 
-FROM virtool/workflow:5.3.0 as base
+FROM python:3.10-buster as base
 WORKDIR /workflow
 COPY --from=spades /build/spades /opt/spades
 ENV PATH="/opt/spades/bin:${PATH}"
