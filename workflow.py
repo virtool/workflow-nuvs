@@ -1,5 +1,6 @@
 import asyncio
 import collections
+import os
 import shlex
 import shutil
 from pathlib import Path
@@ -196,7 +197,11 @@ async def process_fasta(
     ORFs are discarded.
 
     """
-    assembly_path = work_path / "spades/scaffolds.fasta"
+    assembly_path = work_path / "spades/scaffolds.fa"
+
+    await asyncio.to_thread(
+        os.rename, work_path / "spades/scaffolds.fasta", assembly_path
+    )
 
     assembly = await asyncio.to_thread(read_fasta, assembly_path)
 
