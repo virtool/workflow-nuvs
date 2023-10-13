@@ -4,7 +4,6 @@ import logging
 import shutil
 from pathlib import Path
 from shutil import copytree
-from typing import List
 
 import arrow
 import pytest
@@ -16,7 +15,7 @@ from pydantic_factories import ModelFactory, Use
 from virtool_core.models.enums import LibraryType
 from virtool_core.models.hmm import HMM
 from virtool_core.models.index import Index
-from virtool_core.models.job import JobNested
+from virtool_core.models.job import JobMinimal
 from virtool_core.models.reference import ReferenceNested, ReferenceDataType
 from virtool_core.models.samples import Sample
 from virtool_core.models.subtraction import NucleotideComposition, SubtractionUpload
@@ -27,6 +26,7 @@ from virtool_workflow.data_model.analysis import WFAnalysis
 from virtool_workflow.data_model.indexes import WFIndex
 from virtool_workflow.data_model.samples import WFSample
 from virtool_workflow.data_model.subtractions import WFSubtraction
+from virtool_workflow.runtime.run_subprocess import RunSubprocess
 
 from workflow import (
     eliminate_otus,
@@ -90,7 +90,7 @@ def hmms(work_path: Path):
 
 
 @pytest.fixture
-def indexes(run_subprocess, work_path) -> List[WFIndex]:
+def indexes(run_subprocess, work_path) -> list[WFIndex]:
     index_path = work_path / "references"
     index_path.mkdir(parents=True)
 
@@ -140,15 +140,18 @@ async def reads(sample: WFSample, work_path: Path):
 
 @pytest.fixture
 async def analysis(
-    indexes: List[Index], sample: WFSample, subtractions: List[WFSubtraction]
+    indexes: list[Index], sample: WFSample, subtractions: list[WFSubtraction]
 ):
+    class JobMinimalFactory(ModelFactory):
+        __model__ = JobMinimal
+
     return WFAnalysis(
         make_mocked_coro(),
         id="foo",
         created_at=arrow.utcnow().naive,
         files=[],
         index=indexes[0].index,
-        job=JobNested(id="bar"),
+        job=JobMinimalFactory.build(),
         ready=True,
         reference=ReferenceNested(
             id="ref", data_type=ReferenceDataType.genome, name="Reference 1"
@@ -227,7 +230,10 @@ async def test_eliminate_otus(
 
 @pytest.mark.parametrize("no_subtractions", [True, False])
 async def test_eliminate_subtraction(
-    run_subprocess, subtractions: List[WFSubtraction], work_path, no_subtractions
+    no_subtractions: bool,
+    run_subprocess: RunSubprocess,
+    subtractions: list[WFSubtraction],
+    work_path,
 ):
     if no_subtractions:
         subtractions = []
@@ -249,7 +255,7 @@ async def test_eliminate_subtraction(
 
 @pytest.mark.flaky(reruns=3)
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
-async def test_reunite_pairs(paired, reads: Reads, sample: WFSample, work_path):
+async def test_reunite_pairs(paired: bool, reads: Reads, sample: WFSample, work_path):
     if paired:
         sample.paired = paired
 
