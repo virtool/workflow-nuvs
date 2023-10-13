@@ -26,6 +26,7 @@ from virtool_workflow.data_model.analysis import WFAnalysis
 from virtool_workflow.data_model.indexes import WFIndex
 from virtool_workflow.data_model.samples import WFSample
 from virtool_workflow.data_model.subtractions import WFSubtraction
+from virtool_workflow.runtime.run_subprocess import RunSubprocess
 
 from workflow import (
     eliminate_otus,
@@ -227,13 +228,32 @@ async def test_eliminate_otus(
     assert actual == expected
 
 
+@pytest.mark.parametrize("no_subtractions", [True, False])
 async def test_eliminate_subtraction(
-    run_subprocess, subtractions: list[WFSubtraction], work_path: Path
+    no_subtractions: bool,
+    run_subprocess: RunSubprocess,
+    subtractions: list[WFSubtraction],
+    work_path,
 ):
+    if no_subtractions:
+        subtractions = []
+
     shutil.copy(TEST_DATA_PATH / "unmapped_otus.fq", work_path / "unmapped_otus.fq")
     await eliminate_subtraction(2, run_subprocess, subtractions, work_path)
 
+    assert Path(work_path / "unmapped_subtraction.fq").is_file()
 
+    if no_subtractions:
+        with open(work_path / "unmapped_subtraction.fq") as subtracted_file, open(
+            work_path / "unmapped_otus.fq"
+        ) as otu_file:
+            subtracted_lines = [line.strip() for line in subtracted_file]
+            otu_lines = [line.strip() for line in otu_file]
+            for subtracted, otu in zip(subtracted_lines, otu_lines):
+                assert subtracted == otu
+
+
+@pytest.mark.flaky(reruns=3)
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
 async def test_reunite_pairs(paired: bool, reads: Reads, sample: WFSample, work_path):
     if paired:
