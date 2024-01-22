@@ -4,65 +4,105 @@ import os
 import shlex
 import shutil
 from pathlib import Path
-from typing import List
 
 import aiofiles
 import rust
+from pyfixtures import fixture
+from structlog import get_logger
 from virtool_core.bio import (
     find_orfs,
     read_fasta,
 )
+from virtool_core.models.enums import LibraryType
 from virtool_core.utils import compress_file
-from virtool_workflow import hooks
-from virtool_workflow import step
-from virtool_workflow.analysis.hmms import HMMs
-from virtool_workflow.analysis.reads import Reads
-from virtool_workflow.data_model.analysis import WFAnalysis
-from virtool_workflow.data_model.indexes import WFIndex
-from virtool_workflow.data_model.subtractions import WFSubtraction
+from virtool_workflow import RunSubprocess, hooks, step
+from virtool_workflow.analysis.skewer import (
+    SkewerConfiguration,
+    SkewerMode,
+    SkewerRunner,
+)
+from virtool_workflow.analysis.trimming import calculate_trimming_min_length
+from virtool_workflow.analysis.utils import ReadPaths
+from virtool_workflow.data.analyses import WFAnalysis
+from virtool_workflow.data.hmms import WFHMMs
+from virtool_workflow.data.indexes import WFIndex
+from virtool_workflow.data.samples import WFSample
+from virtool_workflow.data.subtractions import WFSubtraction
 
 
 @hooks.on_failure
-async def delete_analysis_document(analysis_provider):
-    await analysis_provider.delete()
+async def delete_analysis(analysis: WFAnalysis):
+    await analysis.delete()
 
 
-@hooks.on_success
-async def upload_result(analysis_provider, results):
-    await analysis_provider.upload_result(results)
+@fixture
+async def trimmed_path(work_path: Path) -> Path:
+    trimmed_path = work_path / "trimmed"
+    trimmed_path.mkdir(exist_ok=True)
+
+    return trimmed_path
+
+
+@fixture
+async def trimmed_read_paths(sample: WFSample, trimmed_path: Path) -> ReadPaths:
+    if sample.paired:
+        return (
+            trimmed_path / "reads_1.fq.gz",
+            trimmed_path / "reads_2.fq.gz",
+        )
+
+    return (trimmed_path / "reads_1.fq.gz",)
+
+
+@step()
+async def trim_reads(
+    proc: int,
+    sample: WFSample,
+    skewer: SkewerRunner,
+    work_path: Path,
+):
+    """Trim reads using Skewer"""
+    trimmed_path = work_path / "trimmed"
+    await asyncio.to_thread(trimmed_path.mkdir, parents=True)
+
+    await skewer(
+        SkewerConfiguration(
+            min_length=calculate_trimming_min_length(sample),
+            mode=SkewerMode.PAIRED_END if sample.paired else SkewerMode.SINGLE_END,
+            number_of_processes=proc,
+        ),
+        sample.read_paths,
+        output_path=trimmed_path,
+    )
 
 
 @step(name="Eliminate OTUs")
 async def eliminate_otus(
-    indexes: List[WFIndex], proc: int, reads: Reads, run_subprocess, work_path: Path
+    index: WFIndex,
+    proc: int,
+    run_subprocess: RunSubprocess,
+    trimmed_read_paths: ReadPaths,
+    work_path: Path,
 ):
-    """
-    Map sample reads to reference OTUs and discard.
+    """Map sample reads to reference OTUs and discard.
 
     Bowtie2 is set to use the search parameter ``--very-fast-local`` and retain
     unaligned reads to the FASTQ file ``unmapped_subtraction.fq``.
 
     """
-    index_path = str(indexes[0].bowtie_path)
-
-    paths = [str(reads.left)]
-
-    if reads.sample.paired:
-        paths.append(str(reads.right))
-
     command = [
         "bowtie2",
         "-p",
-        str(proc),
+        proc,
         "-k",
-        str(1),
+        1,
         "--very-fast-local",
         "-x",
-        index_path,
+        index.bowtie_path,
         "--un",
-        str(work_path / "unmapped_otus.fq"),
+        work_path / "unmapped_otus.fq",
         "-U",
-        ",".join(paths),
+        *trimmed_read_paths,
     ]
 
     await run_subprocess(command)
@@ -70,10 +110,12 @@ async def eliminate_otus(
 
 @step
 async def eliminate_subtraction(
-    proc: int, run_subprocess, subtractions: List[WFSubtraction], work_path: Path
+    proc: int,
+    run_subprocess: RunSubprocess,
+    subtractions: list[WFSubtraction],
+    work_path: Path,
 ):
-    """
-    Map remaining reads to the subtraction and discard.
+    """Map remaining reads to the subtraction and discard.
 
     Reads that were not mapped to the reference OTUs in the previous step
     (`unmapped_otus.fq`) are mapped against the subtraction. Reads with no
@@ -86,57 +128,71 @@ async def eliminate_subtraction(
     option.
 
     """
-
-    if len(subtractions) == 0:
+    if subtractions:
         await asyncio.to_thread(
             shutil.copyfile,
             work_path / "unmapped_otus.fq",
-            work_path / "unmapped_subtraction.fq",
+            work_path / "working_otus.fq",
         )
 
-    await asyncio.to_thread(
-        shutil.copyfile, work_path / "unmapped_otus.fq", work_path / "working_otus.fq"
-    )
+        for subtraction in subtractions:
+            await run_subprocess(
+                [
+                    "bowtie2",
+                    "--very-fast-local",
+                    "-k",
+                    1,
+                    "-p",
+                    proc,
+                    "-x",
+                    shlex.quote(str(subtraction.bowtie2_index_path)),
+                    "--un",
+                    work_path / "unmapped_subtractions.fq",
+                    "-U",
+                    work_path / "working_otus.fq",
+                ],
+            )
 
-    for subtraction in subtractions:
-        command = [
-            "bowtie2",
-            "--very-fast-local",
-            "-k",
-            str(1),
-            "-p",
-            str(proc),
-            "-x",
-            shlex.quote(str(subtraction.bowtie2_index_path)),
-            "--un",
-            str(work_path / "unmapped_subtraction.fq"),
-            "-U",
-            str(work_path / "working_otus.fq"),
-        ]
-
-        await run_subprocess(command)
+            await asyncio.to_thread(
+                shutil.copyfile,
+                work_path / "unmapped_subtractions.fq",
+                work_path / "working_otus.fq",
+            )
 
         await asyncio.to_thread(
-            shutil.copyfile,
-            work_path / "unmapped_subtraction.fq",
+            os.rename,
             work_path / "working_otus.fq",
+            work_path / "unmapped_subtractions.fq",
+        )
+
+    else:
+        await asyncio.to_thread(
+            shutil.copyfile,
+            work_path / "unmapped_otus.fq",
+            work_path / "unmapped_subtractions.fq",
         )
 
 
 @step
-async def reunite_pairs(reads: Reads, work_path: Path):
-    """
-    Reunite paired reads after elimination.
-    """
-    if reads.sample.paired:
-        rs_reads = rust.Reads(
-            reads.sample.paired,
-            str(reads.left.absolute()),
-            str(reads.right.absolute()),
+async def reunite_pairs(
+    sample: WFSample,
+    trimmed_read_paths: ReadPaths,
+    work_path: Path,
+):
+    """Reunite paired reads after elimination."""
+    if sample.paired:
+        args = [
+            sample.paired,
+            *[str(path.absolute()) for path in trimmed_read_paths],
             str(work_path / "unmapped_subtractions.fq"),
-        )
+        ]
 
-        rust.reunite_pairs(rs_reads, str(work_path))
+        rust.reunite_pairs(
+            rust.Reads(
+                *args,
+            ),
+            str(work_path),
+        )
 
 
 @step
@@ -144,36 +200,49 @@ async def assemble(
     analysis: WFAnalysis,
     mem: int,
     proc: int,
-    run_subprocess,
-    sample,
+    run_subprocess: RunSubprocess,
+    sample: WFSample,
     work_path: Path,
 ):
     """Assemble reads using SPAdes."""
-    command = ["spades.py", "-t", str(proc), "-m", str(mem)]
+    spades_path = work_path / "spades"
+
+    k = "21,33,55,75"
+
+    if sample.library_type == LibraryType.srna:
+        k = "17,21,23"
+
+    command = [
+        "spades.py",
+        "-t",
+        proc,
+        "-m",
+        mem,
+        "-k",
+        k,
+        "-o",
+        spades_path,
+    ]
 
     if sample.paired:
         command += [
             "-1",
-            str(work_path / "unmapped_1.fq"),
+            work_path / "unmapped_1.fq",
             "-2",
-            str(work_path / "unmapped_2.fq"),
+            work_path / "unmapped_2.fq",
         ]
     else:
         command += [
             "-s",
-            str(work_path / "unmapped_subtractions.fq"),
+            work_path / "unmapped_subtractions.fq",
         ]
 
-    k = "21,33,55,75"
+    logger = get_logger("spades")
 
-    if sample.library_type == "srna":
-        k = "17,21,23"
+    async def handler(line):
+        logger.info("stdout", line=line.decode().strip())
 
-    spades_path = work_path / "spades"
-
-    command += ["-o", str(spades_path), "-k", k]
-
-    await run_subprocess(command)
+    await run_subprocess(command, stdout_handler=handler)
 
     compressed_assembly_path = work_path / "assembly.fa.gz"
 
@@ -184,18 +253,17 @@ async def assemble(
         processes=proc,
     )
 
-    analysis.upload(compressed_assembly_path, "fasta")
+    await analysis.upload_file(compressed_assembly_path, "fasta")
 
 
 @step
-async def process_fasta(
+async def process_assembly(
     analysis: WFAnalysis,
     proc: int,
     results: dict,
     work_path: Path,
 ):
-    """
-    Find ORFs in the assembled contigs.
+    """Find ORFs in the assembled contigs.
 
     Only ORFs that are 100+ amino acids long are recorded. Contigs with no acceptable
     ORFs are discarded.
@@ -204,7 +272,9 @@ async def process_fasta(
     assembly_path = work_path / "spades/scaffolds.fa"
 
     await asyncio.to_thread(
-        os.rename, work_path / "spades/scaffolds.fasta", assembly_path
+        os.rename,
+        work_path / "spades/scaffolds.fasta",
+        assembly_path,
     )
 
     assembly = await asyncio.to_thread(read_fasta, assembly_path)
@@ -229,7 +299,7 @@ async def process_fasta(
 
         for orf in orfs:
             orf.pop("nuc")
-            orf["hits"] = list()
+            orf["hits"] = []
 
         # Make an entry for the nucleotide sequence containing a unique integer index,
         # the sequence itself, and all ORFs in the sequence.
@@ -242,16 +312,19 @@ async def process_fasta(
         for entry in sequences:
             for orf in entry["orfs"]:
                 await f.write(
-                    f">sequence_{entry['index']}.{orf['index']}\n{orf['pro']}\n"
+                    f">sequence_{entry['index']}.{orf['index']}\n{orf['pro']}\n",
                 )
 
     compressed_orfs_path = Path(f"{orfs_path}.gz")
 
     await asyncio.to_thread(
-        compress_file, orfs_path, compressed_orfs_path, processes=proc
+        compress_file,
+        orfs_path,
+        compressed_orfs_path,
+        processes=proc,
     )
 
-    analysis.upload(compressed_orfs_path, "fasta")
+    await analysis.upload_file(compressed_orfs_path, "fasta")
 
     results["hits"] = sequences
 
@@ -259,14 +332,13 @@ async def process_fasta(
 @step(name="VFam")
 async def vfam(
     analysis: WFAnalysis,
-    hmms: HMMs,
+    hmms: WFHMMs,
     proc: int,
     results: dict,
-    run_subprocess,
+    run_subprocess: RunSubprocess,
     work_path: Path,
 ):
-    """
-    Search for viral motifs in ORF translations.
+    """Search for viral motifs in ORF translations.
 
     ORF translations are generated by :meth:`.process_fasta`. Viral motifs are found
     using ``hmmscan`` to search through ``candidates.fa`` using the profile HMMs in
@@ -281,18 +353,18 @@ async def vfam(
     """
     tsv_path = work_path / "hmm.tsv"
 
-    command = [
-        "hmmscan",
-        "--tblout",
-        str(tsv_path),
-        "--noali",
-        "--cpu",
-        str(proc - 1),
-        str(hmms.path / "profiles.hmm"),
-        str(work_path / "orfs.fa"),
-    ]
-
-    await run_subprocess(command)
+    await run_subprocess(
+        [
+            "hmmscan",
+            "--tblout",
+            tsv_path,
+            "--noali",
+            "--cpu",
+            proc - 1,
+            hmms.path / "profiles.hmm",
+            work_path / "orfs.fa",
+        ],
+    )
 
     hmmer_hits = collections.defaultdict(lambda: collections.defaultdict(list))
 
@@ -321,7 +393,7 @@ async def vfam(
                         "best_e": float(line[7]),
                         "best_bias": float(line[8]),
                         "best_score": float(line[9]),
-                    }
+                    },
                 )
 
     hits = results["hits"]
@@ -337,4 +409,5 @@ async def vfam(
         if all(len(orf["hits"]) == 0 for orf in sequence["orfs"]):
             hits.remove(sequence)
 
-    analysis.upload(tsv_path, "tsv")
+    await analysis.upload_file(tsv_path, "tsv")
+    await analysis.upload_result(results)
