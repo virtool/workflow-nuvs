@@ -54,4 +54,4 @@ COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/pigz /usr/local/
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:/opt/spades/bin:/opt/hmmer/bin:${PATH}"
 COPY --from=build /app/.venv /app/.venv
-COPY workflow.py ./
+COPY workflow.py VERSION* ./
