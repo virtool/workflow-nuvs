@@ -5,13 +5,13 @@ RUN wget https://github.com/BenLangmead/bowtie2/releases/download/v2.3.2/bowtie2
 RUN unzip bowtie2-2.3.2-legacy-linux-x86_64.zip
 RUN mkdir bowtie2
 RUN cp bowtie2-2.3.2-legacy/bowtie2* bowtie2
-RUN wget https://github.com/ablab/spades/releases/download/v3.11.0/SPAdes-3.11.0-Linux.tar.gz
-RUN tar -xvf SPAdes-3.11.0-Linux.tar.gz
-RUN mv SPAdes-3.11.0-Linux spades
+RUN wget https://github.com/ablab/spades/releases/download/v3.15.5/SPAdes-3.15.5-Linux.tar.gz
+RUN tar -xvf SPAdes-3.15.5-Linux.tar.gz
+RUN mv SPAdes-3.15.5-Linux spades
 RUN sed -i 's/import collections/import collections\nimport collections.abc/g' spades/share/spades/pyyaml3/constructor.py
 RUN sed -i 's/key, collections.Hashable/key, collections.abc.Hashable/g' spades/share/spades/pyyaml3/constructor.py
 
-FROM python:3.10-bullseye as build
+FROM python:3.12-bookworm as build
 WORKDIR /app
 COPY --from=prep /build/bowtie2/* /usr/local/bin/
 COPY --from=prep /build/spades /opt/spades
@@ -44,7 +44,7 @@ COPY tests ./tests
 COPY workflow.py ./
 ENTRYPOINT ["poetry", "run"]
 
-FROM python:3.10-bullseye as base
+FROM python:3.12-bookworm as base
 WORKDIR /app
 COPY --from=prep /build/bowtie2/* /usr/local/bin/
 COPY --from=prep /build/spades /opt/spades
