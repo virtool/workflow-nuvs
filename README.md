@@ -19,7 +19,24 @@ A workflow for identifying novel viruses in Virtool.
 To run the tests for this package, use the following command:
 
 ```sh
-pytest
+docker run $(docker build -q .) pytest
+```
+
+If you want to run specific tests, you can specify the test file or directory as an
+argument to `pytest`:
+
+```sh
+docker run $(docker build -q .) pytest tests/test_workflow.py
+```
+
+If you get an error like:
+```
+Unable to find image 'pytest:latest' locally
+```
+
+Your build is likely failing. Run the build separately to make sure it works:
+```sh
+docker build .
 ```
 
 ### Commits

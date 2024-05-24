@@ -272,6 +272,7 @@ async def test_reunite_pairs(
                 f.write(line + "\n")
 
     await reunite_pairs(
+        2,
         sample,
         trimmed_read_paths,
         work_path,

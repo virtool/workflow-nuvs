@@ -6,7 +6,6 @@ import shutil
 from pathlib import Path
 
 import aiofiles
-import rust
 from pyfixtures import fixture
 from structlog import get_logger
 from virtool_core.bio import (
@@ -14,7 +13,7 @@ from virtool_core.bio import (
     read_fasta,
 )
 from virtool_core.models.enums import LibraryType
-from virtool_core.utils import compress_file
+from virtool_core.utils import compress_file, decompress_file
 from virtool_workflow import RunSubprocess, hooks, step
 from virtool_workflow.analysis.skewer import (
     SkewerConfiguration,
@@ -28,6 +27,8 @@ from virtool_workflow.data.hmms import WFHMMs
 from virtool_workflow.data.indexes import WFIndex
 from virtool_workflow.data.samples import WFSample
 from virtool_workflow.data.subtractions import WFSubtraction
+
+from utils import filter_reads_by_headers, read_fastq_headers
 
 
 @hooks.on_failure
@@ -175,23 +176,36 @@ async def eliminate_subtraction(
 
 @step
 async def reunite_pairs(
+    proc: int,
     sample: WFSample,
     trimmed_read_paths: ReadPaths,
     work_path: Path,
 ):
     """Reunite paired reads after elimination."""
     if sample.paired:
-        args = [
-            sample.paired,
-            *[str(path.absolute()) for path in trimmed_read_paths],
-            str(work_path / "unmapped_subtractions.fq"),
-        ]
+        headers = await asyncio.to_thread(
+            read_fastq_headers,
+            work_path / "unmapped_subtractions.fq",
+        )
 
-        rust.reunite_pairs(
-            rust.Reads(
-                *args,
+        for path in trimmed_read_paths:
+            await asyncio.to_thread(
+                decompress_file,
+                path,
+                path.with_suffix(".fq"),
+                proc,
+            )
+
+        path_1, path_2 = trimmed_read_paths
+
+        await asyncio.to_thread(
+            filter_reads_by_headers,
+            headers,
+            (
+                work_path / "unmapped_1.fq",
+                work_path / "unmapped_2.fq",
             ),
-            str(work_path),
+            (path_1.with_suffix(".fq"), path_2.with_suffix(".fq")),
         )
 
 
