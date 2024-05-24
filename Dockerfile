@@ -1,10 +1,12 @@
 FROM debian:bookworm as bowtie2
 WORKDIR /build
-RUN apt-get update && apt-get install -y unzip wget
-RUN wget https://github.com/BenLangmead/bowtie2/releases/download/v2.5.4/bowtie2-2.5.4-linux-x86_64.zip
-RUN unzip bowtie2-2.5.4-linux-x86_64.zip
-RUN mkdir bowtie2
-RUN cp bowtie2-2.5.4-linux-x86_64/bowtie2* bowtie2
+RUN apt-get update && apt-get install -y build-essential cmake wget zlib1g-dev
+RUN wget https://github.com/BenLangmead/bowtie2/archive/refs/tags/v2.5.4.tar.gz
+RUN tar -xvf v2.5.4.tar.gz
+WORKDIR bowtie2-2.5.4
+RUN make
+RUN mkdir /build/bowtie2
+RUN cp bowtie2* /build/bowtie2/
 
 FROM debian:bookworm as spades
 WORKDIR /build
