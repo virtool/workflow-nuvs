@@ -16,6 +16,7 @@ license = "MIT"
 [tool.poetry.dependencies]
 python = "~3.12"
 virtool-workflow = "^6.0.0"
+setuptools = "^70.0.0"
 
 [tool.poetry.group.dev.dependencies]
 pydantic-factories = "^1.17.0"

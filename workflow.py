@@ -238,6 +238,8 @@ async def assemble(
         spades_path,
     ]
 
+    logger = get_logger("spades")
+
     if sample.paired:
         command += [
             "-1",
@@ -250,8 +252,6 @@ async def assemble(
             "-s",
             work_path / "unmapped_subtractions.fq",
         ]
-
-    logger = get_logger("spades")
 
     async def handler(line):
         logger.info("stdout", line=line.decode().strip())
