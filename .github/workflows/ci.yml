@@ -20,22 +20,18 @@ jobs:
         uses: wagoid/commitlint-github-action@v5
   test:
     runs-on: ubuntu-22.04
+    env:
+        USER_ID: 1001
+        GROUP_ID: 1001
     steps:
       - name: Checkout
         uses: actions/checkout@v4
-      - name: Setup Docker
-        uses: docker/setup-buildx-action@v3
-      - name: Build
-        id: build
-        uses: docker/build-push-action@v5
-        with:
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          context: .
-          load: true
-          target: test
+      - name: Compose Build
+        run: docker-compose build --progress=plain
+      - name: Compose Up
+        run: docker-compose up -d
       - name: Test
-        run: docker run --rm -t ${{ steps.build.outputs.imageid }} pytest
+        run: docker compose exec app poetry run pytest
   release:
     runs-on: ubuntu-22.04
     needs: [test, commitlint]

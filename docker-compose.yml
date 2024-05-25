@@ -1,0 +1,13 @@
+services:
+  app:
+    build:
+      args:
+        USER_ID: ${USER_ID}
+        GROUP_ID: ${GROUP_ID}
+      context: .
+      dockerfile: Dockerfile
+      target: test
+    volumes:
+      - .:/app
+    user: "${USER_ID}:${GROUP_ID}"
+    command: ["tail", "-f", "/dev/null"]
