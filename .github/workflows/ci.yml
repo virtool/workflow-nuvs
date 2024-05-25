@@ -20,7 +20,7 @@ jobs:
         uses: wagoid/commitlint-github-action@v5
   test:
     runs-on: ubuntu-22.04
-    environment:
+    env:
         USER_ID: 1001
         GROUP_ID: 1001
     steps:
