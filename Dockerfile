@@ -17,7 +17,7 @@ WORKDIR SPAdes-3.15.5
 ENV PREFIX=/build/spades
 RUN ./spades_compile.sh
 
-FROM python:3.12-bookworm as build
+FROM python:3.12-bookworm as deps
 WORKDIR /app
 COPY --from=bowtie2 /build/bowtie2/* /usr/local/bin/
 COPY --from=spades /build/spades /opt/spades
@@ -25,6 +25,8 @@ COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /opt/hmmer /opt/hmmer
 COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/skewer /usr/local/bin/
 COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/pigz /usr/local/bin/
 RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential default-jre
+
+FROM deps as build
 RUN curl -sSL https://install.python-poetry.org | python -
 ENV PATH="/root/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}" \
     POETRY_CACHE_DIR='/tmp/poetry_cache' \
@@ -34,16 +36,16 @@ ENV PATH="/root/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}" \
 COPY poetry.lock pyproject.toml ./
 RUN poetry install --without dev --no-root && rm -rf $POETRY_CACHE_DIR
 
-FROM build as test
-ENV PATH="/root/.local/bin:/opt/spades/bin:${PATH}" \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_IN_PROJECT=1 \
-    POETRY_VIRTUALENVS_CREATE=1
-RUN poetry install --with dev
-COPY example ./example
-COPY tests ./tests
-COPY utils.py workflow.py ./
-ENTRYPOINT ["poetry", "run"]
+FROM deps as test
+ARG USER_ID
+ARG GROUP_ID
+RUN addgroup --gid $GROUP_ID appgroup
+RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID appuser
+USER appuser
+ENV PATH="/home/appuser/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
+RUN curl -sSL https://install.python-poetry.org | python -
+COPY poetry.lock pyproject.toml ./
+RUN poetry install
 
 FROM python:3.12-bookworm as base
 WORKDIR /app
