@@ -17,7 +17,7 @@ WORKDIR SPAdes-3.15.5
 ENV PREFIX=/build/spades
 RUN ./spades_compile.sh
 
-FROM python:3.12-bookworm as deps
+FROM python:3.12.3-bookworm as deps
 WORKDIR /app
 COPY --from=bowtie2 /build/bowtie2/* /usr/local/bin/
 COPY --from=spades /build/spades /opt/spades
@@ -47,7 +47,7 @@ RUN curl -sSL https://install.python-poetry.org | python -
 COPY poetry.lock pyproject.toml ./
 RUN poetry install
 
-FROM python:3.12-bookworm as base
+FROM python:3.12.3-bookworm as base
 WORKDIR /app
 COPY --from=bowtie2 /build/bowtie2/* /usr/local/bin/
 COPY --from=spades /build/spades /opt/spades
