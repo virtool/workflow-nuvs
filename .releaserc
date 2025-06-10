@@ -1,18 +1,31 @@
 {
-  "branches": [
-    "main",
+  "branches":[
+    "main"
   ],
-  "plugins": [
-    ["@semantic-release/commit-analyzer", {
-      "preset": "conventionalcommits"
-    }],
-    "@semantic-release/release-notes-generator", {
-      "preset": "conventionalcommits"
+  "plugins":[
+    [
+      "@semantic-release/commit-analyzer",
+      {
+        "preset":"conventionalcommits"
+      }
+    ],
+    "@semantic-release/release-notes-generator",
+    {
+      "preset":"conventionalcommits"
     },
-    ["@semantic-release/github", {
-      "failComment": false
-    }]
+    [
+      "@semantic-release/github",
+      {
+        "failComment":false
+      }
+    ],
+    [
+      "@semantic-release/exec",
+      {
+        "successCmd":"echo \"git-tag=${nextRelease.gitTag}\" >> $GITHUB_OUTPUT"
+      }
+    ]
   ],
-  "repositoryUrl": "https://github.com/virtool/workflow-nuvs.git",
-  "tagFormat": "${version}"
+  "repositoryUrl":"https://github.com/virtool/workflow-nuvs.git",
+  "tagFormat":"${version}"
 }

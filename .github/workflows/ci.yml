@@ -8,9 +8,12 @@ on:
     branches:
       - "main"
 
+env:
+  REGISTRY: ghcr.io
+
 jobs:
   commitlint:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -19,7 +22,7 @@ jobs:
       - name: commitlint
         uses: wagoid/commitlint-github-action@v5
   test:
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     env:
         USER_ID: 1001
         GROUP_ID: 1001
@@ -27,15 +30,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Compose Build
-        run: docker-compose build --progress=plain
+        run: docker compose build --progress=plain
       - name: Compose Up
-        run: docker-compose up -d
+        run: docker compose up -d
       - name: Test
         run: docker compose exec app poetry run pytest
   release:
-    runs-on: ubuntu-22.04
-    needs: [test, commitlint]
+    runs-on: ubuntu-24.04
     if: github.event_name == 'push'
+    needs: [test, commitlint]
+    outputs:
+      git-tag: ${{ steps.semantic.outputs.git-tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -44,9 +49,41 @@ jobs:
         with:
           node-version: 20
       - name: Install semantic-release
-        run: npm i semantic-release@v23.0.0 conventional-changelog-conventionalcommits@7.0.2
-      - name: Release
+        run: npm i semantic-release@v24.2.5 @semantic-release/exec@v7.1.0 conventional-changelog-conventionalcommits@9.0.0
+      - name: Run semantic-release
+        id: semantic
         env:
-          GITHUB_USERNAME: ${{ secrets.GH_USERNAME }}
-          GITHUB_TOKEN: ${{ secrets.GH_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
+  ghcr:
+    runs-on: ubuntu-24.04
+    if: github.repository_owner == 'Virtool' && github.event_name == 'push' && needs.release.outputs.git-tag != ''
+    permissions:
+      contents: read
+      packages: write
+    needs: [release]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Write VERSION file
+        run: echo ${{ needs.release.outputs.git-tag }} > VERSION
+      - name: Login to Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Extract Metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          context: git
+          images: ${{ env.REGISTRY }}/virtool/nuvs
+      - name: Build and Push
+        uses: docker/build-push-action@v4
+        with:
+          context: .
+          labels: ${{ steps.meta.outputs.labels }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          target: base
