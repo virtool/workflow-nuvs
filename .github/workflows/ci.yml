@@ -8,6 +8,8 @@ on:
     branches:
       - "main"
 
+  workflow_dispatch:
+
 env:
   REGISTRY: ghcr.io
 
@@ -46,8 +48,6 @@ jobs:
         uses: actions/checkout@v4
       - name: Setup Node.js
         uses: actions/setup-node@v4
-        with:
-          node-version: 20
       - name: Install semantic-release
         run: npm i semantic-release@v24.2.5 @semantic-release/exec@v7.1.0 conventional-changelog-conventionalcommits@9.0.0
       - name: Run semantic-release
@@ -57,10 +57,10 @@ jobs:
         run: npx semantic-release
   ghcr:
     runs-on: ubuntu-24.04
-    if: github.repository_owner == 'Virtool' && github.event_name == 'push' && needs.release.outputs.git-tag != ''
-    permissions:
-      contents: read
-      packages: write
+    if: |
+      github.repository_owner == 'Virtool' &&
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
+      needs.release.outputs.git-tag != ''
     needs: [release]
     steps:
       - name: Checkout

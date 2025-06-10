@@ -13,12 +13,7 @@
     {
       "preset":"conventionalcommits"
     },
-    [
-      "@semantic-release/github",
-      {
-        "failComment":false
-      }
-    ],
+    "@semantic-release/github",
     [
       "@semantic-release/exec",
       {
