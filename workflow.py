@@ -8,12 +8,12 @@ from pathlib import Path
 import aiofiles
 from pyfixtures import fixture
 from structlog import get_logger
-from virtool_core.bio import (
+from virtool.bio import (
     find_orfs,
     read_fasta,
 )
-from virtool_core.models.enums import LibraryType
-from virtool_core.utils import compress_file, decompress_file
+from virtool.models.enums import LibraryType
+from virtool.utils import compress_file, decompress_file
 from virtool_workflow import RunSubprocess, hooks, step
 from virtool_workflow.analysis.skewer import (
     SkewerConfiguration,

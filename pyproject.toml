@@ -1,29 +1,31 @@
-[tool.poetry]
+[project]
 name = "workflow-nuvs"
 version = "0.0.0"
 description = "A workflow for identifying novel viruses in Virtool."
 authors = [
-    "Ian Boyes",
-    "Reece Hoffmann",
-    "Blake Smith",
-    "Tiansheng Sui",
-    "Elizabeth Roberts",
-    "Markus Swoveland",
-    "Christine Wong Chong",
+    {name="Ian Boyes"},
+    {name="Reece Hoffmann"},
+    {name="Blake Smith"},
+    {name="Tiansheng Sui"},
+    {name="Elizabeth Roberts"},
+    {name="Markus Swoveland"},
+    {name="Christine Wong Chong"},
 ]
 license = "MIT"
+requires-python = ">=3.12.3,<3.13"
+
+[tool.poetry]
+package-mode = false
 
 [tool.poetry.dependencies]
-python = "~3.12"
-virtool-workflow = "^7.1.0"
-setuptools = "^70.0.0"
+virtool-workflow = { git = "https://github.com/virtool/virtool-workflow.git", rev="7.1.4" }
 
 [tool.poetry.group.dev.dependencies]
 pydantic-factories = "^1.17.0"
 pytest = "^7.0.0"
 pytest-asyncio = "^0.23.7"
 pytest-mock = "^3.12.0"
-ruff = "^0.1.14"
+ruff = "^0.4.0"
 syrupy = "^4.6.0"
 
 [tool.pytest.ini_options]

@@ -26,7 +26,7 @@ def filter_reads_by_headers(
     """
     out_handles = tuple(path.open("w") for path in out_paths)
 
-    for path, handle in zip(read_paths, out_handles):
+    for path, handle in zip(read_paths, out_handles, strict=False):
         records = (
             record for record in SeqIO.parse(path, "fastq") if record.id in headers
         )
