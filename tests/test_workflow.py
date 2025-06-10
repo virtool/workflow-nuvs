@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from Bio import SeqIO
 from syrupy import SnapshotAssertion
-from virtool_core.models.enums import LibraryType
-from virtool_core.models.hmm import HMM
-from virtool_core.models.samples import Sample
+from virtool.hmm.models import HMM
+from virtool.models.enums import LibraryType
+from virtool.samples.models import Sample
 from virtool_workflow.analysis.skewer import skewer
 from virtool_workflow.analysis.utils import ReadPaths
 from virtool_workflow.data.analyses import WFAnalysis
@@ -262,7 +262,7 @@ async def test_reunite_pairs(
                 work_path / "trimmed" / f"reads_{suffix}.fq.gz",
             )
 
-        for path, key in zip(trimmed_read_paths, ("left", "right")):
+        for path, key in zip(trimmed_read_paths, ("left", "right"), strict=False):
             with gzip.open(path, "wt") as f:
                 for line in unite[key]:
                     f.write(line + "\n")
