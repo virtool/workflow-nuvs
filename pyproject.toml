@@ -22,7 +22,7 @@ virtool-workflow = { git = "https://github.com/virtool/virtool-workflow.git", re
 
 [tool.poetry.group.dev.dependencies]
 pydantic-factories = "^1.17.0"
-pytest = "^7.0.0"
+pytest = "^8.4.0"
 pytest-asyncio = "^0.23.8"
 pytest-mock = "^3.12.0"
 ruff = "^0.11.13"
