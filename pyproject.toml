@@ -24,7 +24,7 @@ virtool-workflow = { git = "https://github.com/virtool/virtool-workflow.git", re
 pydantic-factories = "^1.17.0"
 pytest = "^8.4.0"
 pytest-asyncio = "^0.23.8"
-pytest-mock = "^3.12.0"
+pytest-mock = "^3.14.1"
 ruff = "^0.11.13"
 syrupy = "^4.6.0"
 
