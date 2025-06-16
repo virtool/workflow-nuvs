@@ -16,28 +16,35 @@ A workflow for identifying novel viruses in Virtool.
 
 ### Running Tests
 
-To run the tests for this package, use the following command:
+#### Setup (one-time)
 
+Set environment variables for proper file permissions:
 ```sh
-docker run $(docker build -q .) pytest
+export USER_ID=$(id -u) GROUP_ID=$(id -g)
 ```
 
-If you want to run specific tests, you can specify the test file or directory as an
-argument to `pytest`:
-
+Build the test container:
 ```sh
-docker run $(docker build -q .) pytest tests/test_workflow.py
+docker compose build
 ```
 
-If you get an error like:
-```
-Unable to find image 'pytest:latest' locally
-```
+#### Running Tests
 
-Your build is likely failing. Run the build separately to make sure it works:
+Run all tests:
 ```sh
-docker build .
+docker compose run --rm app poetry run pytest
 ```
+
+Run specific tests:
+```sh
+docker compose run --rm app poetry run pytest tests/test_workflow.py
+```
+
+#### Why This Approach?
+
+- **No rebuilds**: Uses bind mounts to get latest code without rebuilding
+- **No permission issues**: Container runs as your user via USER_ID/GROUP_ID
+- **Fast iterations**: Only Poetry and pytest execution, no Docker build time
 
 ### Commits
 
