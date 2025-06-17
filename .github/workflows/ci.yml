@@ -1,4 +1,4 @@
-name: ci
+name: CI
 
 on:
   pull_request:
@@ -23,7 +23,7 @@ jobs:
           fetch-depth: 0
       - name: commitlint
         uses: wagoid/commitlint-github-action@v5
-  test:
+  Test:
     runs-on: ubuntu-24.04
     env:
         USER_ID: 1001
@@ -37,7 +37,7 @@ jobs:
         run: docker compose up -d
       - name: Test
         run: docker compose exec app poetry run pytest
-  release:
+  Release:
     runs-on: ubuntu-24.04
     if: github.event_name == 'push'
     needs: [test, commitlint]
@@ -55,7 +55,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
-  ghcr:
+  GHCR Publish:
     runs-on: ubuntu-24.04
     if: |
       github.repository_owner == 'Virtool' &&
