@@ -22,11 +22,6 @@ from virtool_workflow.data_model.indexes import WFIndex
 from virtool_workflow.data_model.subtractions import WFSubtraction
 
 
-@hooks.on_failure
-async def delete_analysis_document(analysis_provider):
-    await analysis_provider.delete()
-
-
 @hooks.on_success
 async def upload_result(analysis_provider, results):
     await analysis_provider.upload_result(results)
