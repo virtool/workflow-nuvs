@@ -37,6 +37,7 @@ ARG USER_ID
 ARG GROUP_ID
 RUN addgroup --gid $GROUP_ID appgroup
 RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID appuser
+RUN chown -R appuser:appgroup /app
 USER appuser
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
 ENV PATH="/home/appuser/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
