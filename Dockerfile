@@ -28,7 +28,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl build-esse
 
 FROM deps as build
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
-ENV PATH="/root/.cargo/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
+ENV PATH="/root/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
 COPY uv.lock pyproject.toml ./
 RUN uv sync --no-dev
 
@@ -38,8 +38,8 @@ ARG GROUP_ID
 RUN addgroup --gid $GROUP_ID appgroup
 RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID appuser
 USER appuser
-ENV PATH="/home/appuser/.cargo/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
 RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/home/appuser/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
 COPY uv.lock pyproject.toml ./
 RUN uv sync
 
