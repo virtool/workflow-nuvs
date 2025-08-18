@@ -27,14 +27,10 @@ COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/pigz /usr/local/
 RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential default-jre
 
 FROM deps as build
-RUN curl -sSL https://install.python-poetry.org | python -
-ENV PATH="/root/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}" \
-    POETRY_CACHE_DIR='/tmp/poetry_cache' \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_IN_PROJECT=1 \
-    POETRY_VIRTUALENVS_CREATE=1
-COPY poetry.lock pyproject.toml ./
-RUN poetry install --without dev --no-root && rm -rf $POETRY_CACHE_DIR
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
+COPY uv.lock pyproject.toml ./
+RUN uv sync --no-dev
 
 FROM deps as test
 ARG USER_ID
@@ -42,10 +38,10 @@ ARG GROUP_ID
 RUN addgroup --gid $GROUP_ID appgroup
 RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID appuser
 USER appuser
-ENV PATH="/home/appuser/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
-RUN curl -sSL https://install.python-poetry.org | python -
-COPY poetry.lock pyproject.toml ./
-RUN poetry install
+ENV PATH="/home/appuser/.cargo/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+COPY uv.lock pyproject.toml ./
+RUN uv sync
 
 FROM python:3.12.3-bookworm as base
 WORKDIR /app

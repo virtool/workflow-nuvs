@@ -37,7 +37,7 @@ jobs:
       - name: Compose Up
         run: docker compose up -d
       - name: Test
-        run: docker compose exec app poetry run pytest
+        run: docker compose exec app uv run pytest
   release:
     name: "Release"
     runs-on: ubuntu-24.04
