@@ -18,7 +18,7 @@ requires-python = ">=3.12.3,<3.13"
 package-mode = false
 
 [tool.poetry.dependencies]
-virtool-workflow = "7.2.1"
+virtool-workflow = "7.2.3"
 
 [tool.poetry.group.dev.dependencies]
 pydantic-factories = "^1.17.0"
