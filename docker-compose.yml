@@ -1,13 +1,17 @@
 services:
-  app:
+  dev:
     build:
-      args:
-        USER_ID: ${USER_ID}
-        GROUP_ID: ${GROUP_ID}
       context: .
-      dockerfile: Dockerfile
-      target: test
+      target: dev
     volumes:
+      # Mount entire project directory
       - .:/app
-    user: "${USER_ID}:${GROUP_ID}"
-    command: ["tail", "-f", "/dev/null"]
+      # Persistent volumes for build artifacts
+      - venv-data:/app/.venv
+      - uv-cache:/tmp/uv_cache
+    working_dir: /app
+    command: sleep infinity
+
+volumes:
+  venv-data:
+  uv-cache:

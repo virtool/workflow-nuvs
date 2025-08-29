@@ -1,14 +1,4 @@
-FROM debian:bookworm as bowtie2
-WORKDIR /build
-RUN apt-get update && apt-get install -y build-essential cmake wget zlib1g-dev
-RUN wget https://github.com/BenLangmead/bowtie2/archive/refs/tags/v2.5.4.tar.gz
-RUN tar -xvf v2.5.4.tar.gz
-WORKDIR bowtie2-2.5.4
-RUN make
-RUN mkdir /build/bowtie2
-RUN cp bowtie2* /build/bowtie2/
-
-FROM debian:bookworm as spades
+FROM debian:bookworm AS spades
 WORKDIR /build
 RUN apt-get update && apt-get install -y build-essential cmake libbz2-dev wget zlib1g-dev
 RUN wget https://github.com/ablab/spades/releases/download/v3.15.5/SPAdes-3.15.5.tar.gz
@@ -17,44 +7,40 @@ WORKDIR SPAdes-3.15.5
 ENV PREFIX=/build/spades
 RUN ./spades_compile.sh
 
-FROM python:3.12.3-bookworm as deps
+FROM python:3.13-bookworm AS deps
 WORKDIR /app
-COPY --from=bowtie2 /build/bowtie2/* /usr/local/bin/
+COPY --from=ghcr.io/virtool/tools:1.1.0 /tools/bowtie2/2.5.4/bowtie* /usr/local/bin/
+COPY --from=ghcr.io/virtool/tools:1.1.0 /tools/pigz/2.8/pigz /usr/local/bin/
+COPY --from=ghcr.io/virtool/tools:1.1.0 /tools/hmmer/3.3.2/ /opt/hmmer
 COPY --from=spades /build/spades /opt/spades
-COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /opt/hmmer /opt/hmmer
-COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/skewer /usr/local/bin/
-COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/pigz /usr/local/bin/
-RUN apt-get update && apt-get install -y --no-install-recommends curl build-essential default-jre
 
-FROM deps as build
-RUN curl -sSL https://install.python-poetry.org | python -
-ENV PATH="/root/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}" \
-    POETRY_CACHE_DIR='/tmp/poetry_cache' \
-    POETRY_NO_INTERACTION=1 \
-    POETRY_VIRTUALENVS_IN_PROJECT=1 \
-    POETRY_VIRTUALENVS_CREATE=1
-COPY poetry.lock pyproject.toml ./
-RUN poetry install --without dev --no-root && rm -rf $POETRY_CACHE_DIR
-
-FROM deps as test
-ARG USER_ID
-ARG GROUP_ID
-RUN addgroup --gid $GROUP_ID appgroup
-RUN adduser --disabled-password --gecos '' --uid $USER_ID --gid $GROUP_ID appuser
-USER appuser
-ENV PATH="/home/appuser/.local/bin:/opt/spades/bin:/opt/hmmer/bin/:${PATH}"
-RUN curl -sSL https://install.python-poetry.org | python -
-COPY poetry.lock pyproject.toml ./
-RUN poetry install
-
-FROM python:3.12.3-bookworm as base
+FROM python:3.13-bookworm AS uv
 WORKDIR /app
-COPY --from=bowtie2 /build/bowtie2/* /usr/local/bin/
-COPY --from=spades /build/spades /opt/spades
-COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /opt/hmmer /opt/hmmer
-COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/skewer /usr/local/bin/
-COPY --from=ghcr.io/virtool/workflow-tools:2.0.1 /usr/local/bin/pigz /usr/local/bin/
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+ENV PATH="/root/.cargo/bin:/root/.local/bin:${PATH}" \
+    UV_CACHE_DIR='/tmp/uv_cache'
+COPY uv.lock pyproject.toml README.md ./
+RUN uv sync
+
+FROM deps AS dev
+WORKDIR /app
+ENV PATH="/root/.cargo/bin:/root/.local/bin:${PATH}" \
+    UV_CACHE_DIR='/tmp/uv_cache'
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN curl -LsSf https://astral.sh/uv/install.sh | sh
+
+FROM dev AS test
+COPY uv.lock pyproject.toml ./
+COPY README.md ./
+RUN uv sync
+COPY example ./example
+COPY tests ./tests
+COPY utils.py workflow.py VERSION* ./
+
+FROM deps AS base
+WORKDIR /app
 ENV VIRTUAL_ENV=/app/.venv \
     PATH="/app/.venv/bin:/opt/spades/bin:/opt/hmmer/bin:${PATH}"
-COPY --from=build /app/.venv /app/.venv
+COPY --from=uv /app/.venv /app/.venv
 COPY utils.py workflow.py VERSION* ./

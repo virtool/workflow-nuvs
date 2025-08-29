@@ -3,7 +3,7 @@ name: CI
 on:
   pull_request:
     branches:
-      - "*"
+      - "main"
   push:
     branches:
       - "main"
@@ -15,7 +15,7 @@ env:
 
 jobs:
   commitlint:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,7 +25,7 @@ jobs:
         uses: wagoid/commitlint-github-action@v5
   test:
     name: "Test"  
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     env:
         USER_ID: 1001
         GROUP_ID: 1001
@@ -40,7 +40,7 @@ jobs:
         run: docker compose exec app poetry run pytest
   release:
     name: "Release"
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     if: github.event_name == 'push'
     needs: [test, commitlint]
     outputs:
@@ -58,8 +58,8 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: npx semantic-release
   ghcr:
-    name: "GHCR Publish"
-    runs-on: ubuntu-24.04
+    name: "Publish / GHCR"
+    runs-on: ubuntu-latest
     if: |
       github.repository_owner == 'Virtool' &&
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
