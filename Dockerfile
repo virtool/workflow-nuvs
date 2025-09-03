@@ -37,7 +37,6 @@ COPY utils.py workflow.py VERSION* ./
 
 FROM deps AS base
 WORKDIR /app
-ENV PATH="/root/.local/bin:/opt/hmmer/bin:/opt/spades/bin:${PATH}" \
-    VIRTUAL_ENV=/app/.venv
+ENV PATH="/app/.venv/bin:/root/.local/bin:/opt/hmmer/bin:/opt/spades/bin:${PATH}"
 COPY --from=uv /app/.venv /app/.venv
 COPY utils.py workflow.py VERSION* ./
