@@ -14,21 +14,22 @@ from virtool.bio import (
 )
 from virtool.models.enums import LibraryType
 from virtool.utils import compress_file, decompress_file
-from virtool_workflow import RunSubprocess, hooks, step
-from virtool_workflow.analysis.skewer import (
+from virtool.workflow import RunSubprocess, hooks, step
+from virtool.workflow.analysis import ReadPaths
+from virtool.workflow.data.analyses import WFAnalysis
+from virtool.workflow.data.hmms import WFHMMs
+from virtool.workflow.data.indexes import WFIndex
+from virtool.workflow.data.samples import WFSample
+from virtool.workflow.data.subtractions import WFSubtraction
+
+from utils import (
     SkewerConfiguration,
     SkewerMode,
     SkewerRunner,
+    calculate_trimming_min_length,
+    filter_reads_by_headers,
+    read_fastq_headers,
 )
-from virtool_workflow.analysis.trimming import calculate_trimming_min_length
-from virtool_workflow.analysis.utils import ReadPaths
-from virtool_workflow.data.analyses import WFAnalysis
-from virtool_workflow.data.hmms import WFHMMs
-from virtool_workflow.data.indexes import WFIndex
-from virtool_workflow.data.samples import WFSample
-from virtool_workflow.data.subtractions import WFSubtraction
-
-from utils import filter_reads_by_headers, read_fastq_headers
 
 
 @hooks.on_failure
@@ -38,6 +39,7 @@ async def delete_analysis(analysis: WFAnalysis):
 
 @fixture
 async def trimmed_path(work_path: Path) -> Path:
+    """The path to a directory for trimmed reads."""
     trimmed_path = work_path / "trimmed"
     trimmed_path.mkdir(exist_ok=True)
 
@@ -62,7 +64,7 @@ async def trim_reads(
     skewer: SkewerRunner,
     work_path: Path,
 ):
-    """Trim reads using Skewer"""
+    """Trim reads using Skewer."""
     trimmed_path = work_path / "trimmed"
     await asyncio.to_thread(trimmed_path.mkdir, parents=True)
 
@@ -253,10 +255,10 @@ async def assemble(
             work_path / "unmapped_subtractions.fq",
         ]
 
-    async def handler(line):
+    async def handler(line: bytes) -> None:
         logger.info("stdout", line=line.decode().strip())
 
-    await run_subprocess(command, stdout_handler=handler)
+    await run_subprocess([str(c) for c in command], stdout_handler=handler)
 
     compressed_assembly_path = work_path / "assembly.fa.gz"
 
@@ -293,7 +295,7 @@ async def process_assembly(
 
     assembly = await asyncio.to_thread(read_fasta, assembly_path)
 
-    sequences = list()
+    sequences = []
 
     for _, sequence in assembly:
         sequence_length = len(sequence)
@@ -384,7 +386,7 @@ async def vfam(
 
     # Go through the raw HMMER results and annotate the HMM hits with data from the
     # database.
-    async with aiofiles.open(tsv_path, "r") as f:
+    async with aiofiles.open(tsv_path) as f:
         async for line in f:
             if line.startswith("vFam"):
                 line = line.split()

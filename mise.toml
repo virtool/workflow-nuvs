@@ -1,0 +1,34 @@
+[tools]
+python = "3.13"
+uv = "latest"
+
+[vars]
+test_exec = "docker compose exec test"
+
+[tasks."test"]
+description = "Run Python/e2e tests in container"
+depends = ["test:start"]
+run = [
+  "{{vars.test_exec}} bash -c 'uv sync'",
+  '{{vars.test_exec}} uv run pytest {{arg(name="pytest_args", var=true, default="")}}'
+]
+
+[tasks."test:bash"]
+description = "Open interactive shell in test container"
+run = "{{vars.test_exec}} bash"
+
+[tasks."test:rebuild"]
+description = "Force rebuild the test container"
+run = [
+  "docker compose down -v --remove-orphans",
+  "docker compose build test",
+  "docker compose up -d"
+]
+
+[tasks."test:start"]
+description = "Start the test container"
+run = "docker compose up -d test"
+
+[tasks."test:stop"]
+description = "Stop the test container"
+run = "docker compose down --remove-orphans"

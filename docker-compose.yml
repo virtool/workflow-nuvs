@@ -1,8 +1,8 @@
 services:
-  dev:
+  test:
     build:
       context: .
-      target: dev
+      target: test
     volumes:
       # Mount entire project directory
       - .:/app
