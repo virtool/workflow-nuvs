@@ -1,7 +1,8 @@
 [project]
 name = "workflow-nuvs"
-version = "0.0.0"
+version = "0.1.0"
 description = "A workflow for identifying novel viruses in Virtool."
+readme = "README.md"
 authors = [
     {name="Ian Boyes"},
     {name="Reece Hoffmann"},
@@ -11,22 +12,20 @@ authors = [
     {name="Markus Swoveland"},
     {name="Christine Wong Chong"},
 ]
-license = "MIT"
-requires-python = ">=3.12.3,<3.13"
+requires-python = ">=3.13.7,<4.0.0"
+dependencies = [
+    "virtool",
+]
 
-[tool.poetry]
-package-mode = false
-
-[tool.poetry.dependencies]
-virtool-workflow = "7.2.1"
-
-[tool.poetry.group.dev.dependencies]
-pydantic-factories = "^1.17.0"
-pytest = "^8.4.1"
-pytest-asyncio = "^1.1.0"
-pytest-mock = "^3.14.1"
-ruff = "^0.12.10"
-syrupy = "^4.9.1"
+[dependency-groups]
+dev = [
+    "pydantic-factories>=1.17.3",
+    "pytest>=8.4.1",
+    "pytest-asyncio>=1.1.0",
+    "pytest-mock>=3.14.1",
+    "ruff>=0.12.11",
+    "syrupy>=4.9.1",
+]
 
 [tool.pytest.ini_options]
 asyncio_mode = "auto"
@@ -34,8 +33,8 @@ asyncio_mode = "auto"
 [tool.ruff.lint]
 select = ["ALL"]
 
-[build-system]
-requires = ["poetry-core>=1.0.0"]
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN201", "ANN202", "D205", "S101", "S106"]
 
-[tool.maturin]
-python-source = "python"
+[tool.uv.sources]
+virtool = { git = "https://github.com/virtool/virtool", tag = "31.11.3" }

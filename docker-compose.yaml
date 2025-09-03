@@ -1,0 +1,17 @@
+services:
+  test:
+    build:
+      context: .
+      target: test
+    volumes:
+      # Mount entire project directory
+      - .:/app
+      # Persistent volumes for build artifacts
+      - venv-data:/app/.venv
+      - uv-cache:/tmp/uv_cache
+    working_dir: /app
+    command: sleep infinity
+
+volumes:
+  venv-data:
+  uv-cache:

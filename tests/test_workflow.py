@@ -4,20 +4,22 @@ from pathlib import Path
 
 import pytest
 from Bio import SeqIO
+from pytest_mock import MockerFixture
+from structlog import get_logger
 from syrupy import SnapshotAssertion
 from virtool.hmm.models import HMM
 from virtool.models.enums import LibraryType
 from virtool.samples.models import Sample
-from virtool_workflow.analysis.skewer import skewer
-from virtool_workflow.analysis.utils import ReadPaths
-from virtool_workflow.data.analyses import WFAnalysis
-from virtool_workflow.data.hmms import WFHMMs
-from virtool_workflow.data.indexes import WFIndex
-from virtool_workflow.data.samples import WFSample
-from virtool_workflow.data.subtractions import WFSubtraction
-from virtool_workflow.pytest_plugin import Data
-from virtool_workflow.runtime.run_subprocess import RunSubprocess
+from virtool.workflow.analysis import ReadPaths
+from virtool.workflow.data.analyses import WFAnalysis
+from virtool.workflow.data.hmms import WFHMMs
+from virtool.workflow.data.indexes import WFIndex
+from virtool.workflow.data.samples import WFSample
+from virtool.workflow.data.subtractions import WFSubtraction
+from virtool.workflow.pytest_plugin import WorkflowData
+from virtool.workflow.runtime.run_subprocess import RunSubprocess
 
+from utils import skewer
 from workflow import (
     assemble,
     eliminate_otus,
@@ -28,28 +30,30 @@ from workflow import (
     vfam,
 )
 
+logger = get_logger("test")
 
-@pytest.fixture()
+
+@pytest.fixture
 async def analysis(
-    data: Data,
-    mocker,
+    mocker: MockerFixture,
+    workflow_data: WorkflowData,
 ) -> WFAnalysis:
     analysis_ = mocker.Mock(spec=WFAnalysis)
 
-    analysis_.id = data.analysis.id
+    analysis_.id = workflow_data.analysis.id
     analysis_.ready = True
     analysis_.files = []
-    analysis_.index = data.analysis.index
+    analysis_.index = workflow_data.analysis.index
     analysis_.ml = None
-    analysis_.reference = data.analysis.reference
-    analysis_.sample = data.analysis.sample
-    analysis_.subtractions = data.analysis.subtractions
+    analysis_.reference = workflow_data.analysis.reference
+    analysis_.sample = workflow_data.analysis.sample
+    analysis_.subtractions = workflow_data.analysis.subtractions
     analysis_.workflow = "nuvs"
 
     return analysis_
 
 
-@pytest.fixture()
+@pytest.fixture
 def hmms(example_path: Path, work_path: Path) -> WFHMMs:
     hmms_path = work_path / "hmms"
 
@@ -85,44 +89,48 @@ def hmms(example_path: Path, work_path: Path) -> WFHMMs:
     return WFHMMs(annotations, hmms_path)
 
 
-@pytest.fixture()
-def index(data: Data, example_path: Path, work_path: Path) -> WFIndex:
-    index_path = work_path / "indexes" / data.index.id
+@pytest.fixture
+def index(workflow_data: WorkflowData, example_path: Path, work_path: Path) -> WFIndex:
+    index_path = work_path / "indexes" / workflow_data.index.id
     index_path.parent.mkdir(parents=True)
 
     shutil.copytree(example_path / "index", index_path)
 
     return WFIndex(
-        id=data.index.id,
+        id=workflow_data.index.id,
         path=index_path,
         manifest={},
-        reference=data.index.reference,
+        reference=workflow_data.index.reference,
         sequence_lengths={},
         sequence_otu_map={},
     )
 
 
-@pytest.fixture()
-async def sample(data: Data, example_path: Path, work_path: Path) -> WFSample:
-    path = work_path / "samples" / data.sample.id
+@pytest.fixture
+async def sample(
+    workflow_data: WorkflowData,
+    example_path: Path,
+    work_path: Path,
+) -> WFSample:
+    path = work_path / "samples" / workflow_data.sample.id
     path.mkdir(parents=True)
 
     shutil.copyfile(example_path / "sample" / "reads_1.fq.gz", path / "reads_1.fq.gz")
 
     return WFSample(
-        id=data.sample.id,
+        id=workflow_data.sample.id,
         library_type=LibraryType.normal,
-        name=data.sample.name,
+        name=workflow_data.sample.name,
         paired=False,
-        quality=data.sample.quality,
+        quality=workflow_data.sample.quality,
         read_paths=(path / "reads_1.fq.gz",),
     )
 
 
-@pytest.fixture()
+@pytest.fixture
 async def subtractions(
-    data: Data,
     example_path: Path,
+    workflow_data: WorkflowData,
     work_path: Path,
 ) -> list[WFSubtraction]:
     subtractions_path = work_path / "subtractions"
@@ -132,7 +140,7 @@ async def subtractions(
         WFSubtraction(
             id=f"subtraction_{suffix}",
             files=[],
-            gc=data.subtraction.gc,
+            gc=workflow_data.subtraction.gc,
             nickname=f"Subby {suffix}",
             name=f"Subtraction {suffix}",
             path=subtractions_path / f"subtraction_{suffix}",
@@ -141,12 +149,15 @@ async def subtractions(
     )
 
     for subtraction in (subtraction_1, subtraction_2):
-        shutil.copytree(example_path / "subtraction", subtraction.path)
+        shutil.copytree(
+            example_path / "subtractions" / "arabidopsis_thaliana",
+            subtraction.path,
+        )
 
     return [subtraction_1, subtraction_2]
 
 
-@pytest.fixture()
+@pytest.fixture
 def trimmed_read_paths(example_path: Path, work_path: Path) -> ReadPaths:
     path = work_path / "trimmed"
     path.mkdir()
@@ -207,7 +218,7 @@ async def test_eliminate_subtraction(
     run_subprocess: RunSubprocess,
     snapshot: SnapshotAssertion,
     subtractions: list[WFSubtraction],
-    work_path,
+    work_path: Path,
 ):
     """Test that the step eliminates subractions when provided, but does nothing if no
     subtractions are provided.
@@ -289,9 +300,9 @@ async def test_assemble(
     paired: bool,
     analysis: WFAnalysis,
     example_path: Path,
+    run_subprocess: RunSubprocess,
     sample: Sample,
     snapshot: SnapshotAssertion,
-    run_subprocess: RunSubprocess,
     work_path: Path,
 ):
     sample.paired = paired

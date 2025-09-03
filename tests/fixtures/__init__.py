@@ -7,19 +7,19 @@ from tests.fixtures.unite import unite
 __all__ = ["unite"]
 
 
-@pytest.fixture()
+@pytest.fixture
 def example_path():
     return Path(__file__).parent.parent.parent / "example"
 
 
-@pytest.fixture()
+@pytest.fixture
 def virtool_workflow_example_path(example_path: Path):
     return example_path
 
 
-@pytest.fixture()
-def work_path(tmpdir):
-    path = Path(tmpdir) / "work"
+@pytest.fixture
+def work_path(tmp_path: Path) -> Path:
+    path = tmp_path / "work"
     path.mkdir(parents=True)
 
     return path
