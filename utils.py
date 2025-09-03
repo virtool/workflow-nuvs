@@ -67,7 +67,7 @@ class SkewerConfiguration:
 
 @dataclass
 class SkewerResult:
-    """Represents the result of running Skewer to trim a paired or unpaired FASTQ dataset."""
+    """Represents the result of running Skewer to trim paired or unpaired FASTQ data."""
 
     command: list[str]
     """The command used to run Skewer."""
@@ -83,22 +83,14 @@ class SkewerResult:
 
     @property
     def left(self) -> Path:
-        """The path to one of:
-
-        - the FASTQ trimming result for an unpaired Illumina dataset
-        - the FASTA trimming result for the left reads of a paired Illumina dataset
-
-        """
+        """The path to the left reads of paired or unpaired FASTQ data."""
         return self.read_paths[0]
 
     @property
     def right(self) -> Path | None:
-        """The path to the rights reads of a paired Illumina dataset.
+        """The path to the right reads of a paired Illumina dataset.
 
-        ``None`` if the dataset in unpaired.
-
-        :type: :class:`.Path`
-
+        Set to ``None`` if the dataset in unpaired.
         """
         try:
             return self.read_paths[1]
@@ -263,33 +255,6 @@ def _rename_trimming_results(temp_path: Path, output_path: Path) -> ReadPaths:
         )
 
 
-def calculate_trimming_cache_key(
-    sample_id: str,
-    trimming_parameters: dict,
-    program: str = "skewer",
-):
-    """Compute a unique cache key.
-
-    **This is not currently used.**
-
-    :param sample_id: The ID of the sample being trimmed.
-    :param trimming_parameters: The trimming parameters.
-    :param program: The name of the trimming program.
-    :return: A unique cache key.
-
-    """
-    raw_key = "reads-" + json.dumps(
-        {
-            "id": sample_id,
-            "parameters": trimming_parameters,
-            "program": program,
-        },
-        sort_keys=True,
-    )
-
-    return hashlib.sha256(raw_key.encode()).hexdigest()
-
-
 def calculate_trimming_min_length(sample: WFSample) -> int:
     """Calculate the minimum trimming length that should be used for the passed sample.
 
@@ -327,8 +292,12 @@ def filter_reads_by_headers(
     out_paths: tuple[Path, Path],
     read_paths: ReadPaths,
 ):
-    """Filter paired, input FASTQ files based on whether their headers are in
-    `headers`.
+    """Filter FASTQ data based on whether their headers are in `headers`.
+
+    :param headers: headers for which FASTQ entries should be retained
+    :param out_paths: paths to which to write the filtered FASTQ files
+    :param read_paths: paths from which to read FASTQ files
+
     """
     out_handles = tuple(path.open("w") for path in out_paths)
 

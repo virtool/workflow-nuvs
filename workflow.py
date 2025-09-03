@@ -349,6 +349,7 @@ async def process_assembly(
 async def vfam(
     analysis: WFAnalysis,
     hmms: WFHMMs,
+    logger,
     proc: int,
     results: dict,
     run_subprocess: RunSubprocess,
@@ -367,18 +368,25 @@ async def vfam(
       annotations from the Virtool HMM database collection
 
     """
+    logger.info("running hmmpress on database")
+    await run_subprocess(["hmmpress", str(hmms.profiles_path)])
+
     tsv_path = work_path / "hmm.tsv"
 
+    logger.info("running hmmscan")
     await run_subprocess(
         [
-            "hmmscan",
-            "--tblout",
-            tsv_path,
-            "--noali",
-            "--cpu",
-            proc - 1,
-            hmms.path / "profiles.hmm",
-            work_path / "orfs.fa",
+            str(c)
+            for c in [
+                "hmmscan",
+                "--tblout",
+                tsv_path,
+                "--noali",
+                "--cpu",
+                proc - 1,
+                hmms.path / "profiles.hmm",
+                work_path / "orfs.fa",
+            ]
         ],
     )
 
@@ -386,6 +394,7 @@ async def vfam(
 
     # Go through the raw HMMER results and annotate the HMM hits with data from the
     # database.
+    logger.info("annotating hits")
     async with aiofiles.open(tsv_path) as f:
         async for line in f:
             if line.startswith("vFam"):
@@ -425,5 +434,6 @@ async def vfam(
         if all(len(orf["hits"]) == 0 for orf in sequence["orfs"]):
             hits.remove(sequence)
 
+    logger.info("uploading result files")
     await analysis.upload_file(tsv_path, "tsv")
     await analysis.upload_result(results)
