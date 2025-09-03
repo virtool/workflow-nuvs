@@ -33,5 +33,8 @@ asyncio_mode = "auto"
 [tool.ruff.lint]
 select = ["ALL"]
 
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["ANN201", "ANN202", "D205", "S101", "S106"]
+
 [tool.uv.sources]
 virtool = { git = "https://github.com/virtool/virtool", tag = "31.11.3" }

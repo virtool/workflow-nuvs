@@ -31,6 +31,8 @@ from utils import (
     read_fastq_headers,
 )
 
+logger = get_logger("workflow")
+
 
 @hooks.on_failure
 async def delete_analysis(analysis: WFAnalysis):
@@ -349,7 +351,6 @@ async def process_assembly(
 async def vfam(
     analysis: WFAnalysis,
     hmms: WFHMMs,
-    logger,
     proc: int,
     results: dict,
     run_subprocess: RunSubprocess,

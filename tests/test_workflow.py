@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from Bio import SeqIO
 from pytest_mock import MockerFixture
+from structlog import get_logger
 from syrupy import SnapshotAssertion
 from virtool.hmm.models import HMM
 from virtool.models.enums import LibraryType
@@ -28,6 +29,8 @@ from workflow import (
     trim_reads,
     vfam,
 )
+
+logger = get_logger("test")
 
 
 @pytest.fixture
@@ -147,7 +150,8 @@ async def subtractions(
 
     for subtraction in (subtraction_1, subtraction_2):
         shutil.copytree(
-            example_path / "subtractions" / "arabidopsis_thaliana", subtraction.path
+            example_path / "subtractions" / "arabidopsis_thaliana",
+            subtraction.path,
         )
 
     return [subtraction_1, subtraction_2]
