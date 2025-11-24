@@ -71,7 +71,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v6
       - name: Install semantic-release
         run: npm i semantic-release@v24.2.5 @semantic-release/exec@v7.1.0 conventional-changelog-conventionalcommits@9.0.0
       - name: Run semantic-release
