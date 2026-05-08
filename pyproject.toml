@@ -37,4 +37,4 @@ select = ["ALL"]
 "tests/**" = ["ANN201", "ANN202", "D205", "S101", "S106"]
 
 [tool.uv.sources]
-virtool = { git = "https://github.com/virtool/virtool", tag = "36.24.0" }
+virtool = { git = "https://github.com/virtool/virtool", tag = "36.26.0" }
