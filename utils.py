@@ -1,8 +1,10 @@
 import asyncio
 import itertools
 import os
+import re
 import shutil
 from asyncio.subprocess import Process
+from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -11,10 +13,21 @@ from typing import Protocol
 
 from Bio import SeqIO
 from pyfixtures import fixture
+from structlog import get_logger
+from virtool.caches.utils import derive_key
 from virtool.models.enums import LibraryType
 from virtool.workflow import RunSubprocess
 from virtool.workflow.analysis import ReadPaths
+from virtool.workflow.data.cache import CacheHit, WorkflowCache
 from virtool.workflow.data.samples import WFSample
+from virtool.workflow.utils import get_workflow_version
+
+BOWTIE2_BUILD_TOOL = "bowtie2-build"
+SKEWER_TOOL = "skewer"
+WORKFLOW_NAME = "nuvs"
+WORKFLOW_VERSION = get_workflow_version()
+
+logger = get_logger("workflow")
 
 
 class SkewerMode(str, Enum):
@@ -274,6 +287,179 @@ def calculate_trimming_min_length(sample: WFSample) -> int:
         return 100
 
     return 160
+
+
+async def get_tool_version(
+    tool_name: str,
+    version_command: list[str],
+    run_subprocess: RunSubprocess,
+) -> str:
+    """Return a parsed tool version from a subprocess version command."""
+    output = []
+
+    async def collect_output(line: bytes) -> None:
+        output.append(line.decode())
+
+    await run_subprocess(
+        version_command,
+        stderr_handler=collect_output,
+        stdout_handler=collect_output,
+    )
+
+    output_text = "".join(output)
+
+    match = re.search(r"\bversion\s+([^\s]+)", output_text)
+
+    if match is None:
+        match = re.search(r"\bv?([0-9]+(?:\.[0-9A-Za-z_-]+)+)", output_text)
+
+    if match is None:
+        raise ValueError(f"Could not parse {tool_name} version")
+
+    return match.group(1)
+
+
+async def get_bowtie2_build_version(run_subprocess: RunSubprocess) -> str:
+    """Return the version reported by bowtie2-build."""
+    return await get_tool_version(
+        BOWTIE2_BUILD_TOOL,
+        [BOWTIE2_BUILD_TOOL, "--version"],
+        run_subprocess,
+    )
+
+
+async def get_skewer_version(run_subprocess: RunSubprocess) -> str:
+    """Return the version reported by Skewer."""
+    return await get_tool_version(
+        SKEWER_TOOL,
+        [SKEWER_TOOL, "--version"],
+        run_subprocess,
+    )
+
+
+async def get_trimmed_reads_cache_params(
+    config: SkewerConfiguration,
+    sample: WFSample,
+    run_subprocess: RunSubprocess,
+) -> dict[str, str | int | float | bool]:
+    """Return cache key params for NuVs trimmed reads."""
+    return {
+        "kind": "trimmed_reads",
+        "workflow": WORKFLOW_NAME,
+        "workflow_version": WORKFLOW_VERSION,
+        "parent_id": sample.id,
+        "tool_name": SKEWER_TOOL,
+        "tool_version": await get_skewer_version(run_subprocess),
+        "min_length": config.min_length,
+        "mode": config.mode.value,
+        "end_quality": config.end_quality,
+        "max_error_rate": config.max_error_rate,
+        "max_indel_rate": config.max_indel_rate,
+        "mean_quality": config.mean_quality,
+    }
+
+
+async def get_mapping_index_cache_params(
+    index_kind: str,
+    parent_id: str,
+    run_subprocess: RunSubprocess,
+    extra_params: dict[str, str] | None = None,
+) -> dict[str, str]:
+    """Return cache key params for a Bowtie2 mapping index."""
+    params = {
+        "index_kind": index_kind,
+        "workflow": WORKFLOW_NAME,
+        "workflow_version": WORKFLOW_VERSION,
+        "parent_id": parent_id,
+        "tool_name": BOWTIE2_BUILD_TOOL,
+        "tool_version": await get_bowtie2_build_version(run_subprocess),
+    }
+
+    if extra_params is not None:
+        params.update(extra_params)
+
+    return params
+
+
+def derive_cache_key(params: dict) -> str:
+    """Derive a shared workflow cache key from cache params."""
+    return derive_key(params)
+
+
+async def build_bowtie2_index(
+    fasta_path: Path,
+    index_prefix: Path,
+    proc: int,
+    run_subprocess: RunSubprocess,
+) -> None:
+    """Build a Bowtie2 index with a stable local prefix."""
+    await run_subprocess(
+        [
+            BOWTIE2_BUILD_TOOL,
+            "--threads",
+            str(proc),
+            str(fasta_path),
+            str(index_prefix),
+        ],
+    )
+
+
+async def create_mapping_index(
+    cache: WorkflowCache,
+    proc: int,
+    run_subprocess: RunSubprocess,
+    *,
+    index_kind: str,
+    index_prefix: Path,
+    fasta_path: Path,
+    parent_id: str,
+    extra_params: dict[str, str] | None = None,
+    prepare_fasta: Callable[[], None] | None = None,
+    remove_fasta_after_build: bool = False,
+) -> None:
+    """Build or restore a Bowtie2 mapping index through the shared workflow cache."""
+    index_dir = index_prefix.parent
+    cache_restore_parent = index_dir.parent
+    params = await get_mapping_index_cache_params(
+        index_kind,
+        parent_id,
+        run_subprocess,
+        extra_params,
+    )
+    key = derive_cache_key(params)
+    log = logger.bind(
+        index_kind=index_kind,
+        key=key,
+        parent_id=parent_id,
+        workflow=WORKFLOW_NAME,
+    )
+
+    log.info("checking workflow cache")
+
+    result = await cache.get(key, cache_restore_parent)
+
+    if isinstance(result, CacheHit):
+        log.info("restored cached mapping index", outcome="hit")
+        return
+
+    log.info("building mapping index", outcome="miss")
+
+    index_dir.mkdir(parents=True, exist_ok=True)
+
+    if prepare_fasta is not None:
+        prepare_fasta()
+
+    await build_bowtie2_index(fasta_path, index_prefix, proc, run_subprocess)
+
+    if remove_fasta_after_build:
+        fasta_path.unlink()
+
+    created = await cache.put(key, index_dir, params=params)
+
+    if created:
+        log.info("cached built mapping index", outcome="put")
+    else:
+        log.info("mapping index cache already exists", outcome="put_skipped")
 
 
 def read_fastq_headers(path: Path) -> set[str]:
