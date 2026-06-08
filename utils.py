@@ -4,7 +4,6 @@ import os
 import re
 import shutil
 from asyncio.subprocess import Process
-from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -414,8 +413,6 @@ async def create_mapping_index(
     fasta_path: Path,
     parent_id: str,
     extra_params: dict[str, str] | None = None,
-    prepare_fasta: Callable[[], None] | None = None,
-    remove_fasta_after_build: bool = False,
 ) -> None:
     """Build or restore a Bowtie2 mapping index through the shared workflow cache."""
     index_dir = index_prefix.parent
@@ -446,13 +443,7 @@ async def create_mapping_index(
 
     index_dir.mkdir(parents=True, exist_ok=True)
 
-    if prepare_fasta is not None:
-        prepare_fasta()
-
     await build_bowtie2_index(fasta_path, index_prefix, proc, run_subprocess)
-
-    if remove_fasta_after_build:
-        fasta_path.unlink()
 
     created = await cache.put(key, index_dir, params=params)
 

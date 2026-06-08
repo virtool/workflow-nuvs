@@ -3,8 +3,8 @@ import collections
 import os
 import shlex
 import shutil
-from functools import partial
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import aiofiles
 from pyfixtures import fixture
@@ -25,10 +25,10 @@ from virtool.workflow.data.samples import WFSample
 from virtool.workflow.data.subtractions import WFSubtraction
 
 from utils import (
+    WORKFLOW_NAME,
     SkewerConfiguration,
     SkewerMode,
     SkewerRunner,
-    WORKFLOW_NAME,
     calculate_trimming_min_length,
     create_mapping_index,
     derive_cache_key,
@@ -205,25 +205,21 @@ async def create_subtraction_indexes(
             subtraction_indexes_path,
             subtraction.id,
         )
-        fasta_path = index_path.parent / "subtraction.fa"
 
-        await create_mapping_index(
-            cache,
-            proc,
-            run_subprocess,
-            index_kind="subtraction_mapping_index",
-            index_prefix=index_path,
-            fasta_path=fasta_path,
-            parent_id=subtraction.id,
-            extra_params={"source": "subtraction_fasta"},
-            prepare_fasta=partial(
-                decompress_file,
-                subtraction.fasta_path,
-                fasta_path,
+        with TemporaryDirectory() as temp_dir:
+            fasta_path = Path(temp_dir) / "subtraction.fa"
+            decompress_file(subtraction.fasta_path, fasta_path, proc)
+
+            await create_mapping_index(
+                cache,
                 proc,
-            ),
-            remove_fasta_after_build=True,
-        )
+                run_subprocess,
+                index_kind="subtraction_mapping_index",
+                index_prefix=index_path,
+                fasta_path=fasta_path,
+                parent_id=subtraction.id,
+                extra_params={"source": "subtraction_fasta"},
+            )
 
 
 @step
