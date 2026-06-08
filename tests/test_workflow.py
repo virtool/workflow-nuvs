@@ -119,6 +119,11 @@ class FakeRunSubprocess:
             return SimpleNamespace(returncode=0)
 
         if command[0] == "bowtie2-build":
+            fasta_path = Path(command[-2])
+
+            if not fasta_path.exists():
+                raise FileNotFoundError(fasta_path)
+
             prefix = Path(command[-1])
             prefix.parent.mkdir(parents=True, exist_ok=True)
 
