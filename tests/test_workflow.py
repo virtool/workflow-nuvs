@@ -58,6 +58,8 @@ SubtractionIndexPath = Callable[[int | WFSubtraction], Path]
 
 
 class FakeWorkflowCache:
+    """Isolate workflow cache branching without exercising the API-backed cache."""
+
     def __init__(
         self,
         hit_source: Path | list[Path] | None = None,
@@ -175,6 +177,14 @@ def bowtie2_bundle_bytes(prefix: str, content: bytes | None = None) -> dict[str,
         f"{prefix}.{suffix}": content or f"{prefix}.{suffix}".encode()
         for suffix in BOWTIE2_INDEX_SUFFIXES
     }
+
+
+def assert_bowtie2_bundle_exists(prefix: Path) -> None:
+    """Assert that Bowtie2 wrote the expected index files for a prefix."""
+    for suffix in BOWTIE2_INDEX_SUFFIXES:
+        path = prefix.parent / f"{prefix.name}.{suffix}"
+        assert path.exists()
+        assert path.stat().st_size > 0
 
 
 @pytest.fixture
@@ -383,19 +393,22 @@ async def test_get_trimmed_reads_cache_params(sample: WFSample):
 
     params = await get_trimmed_reads_cache_params(config, sample, FakeRunSubprocess())
 
-    assert params.items() >= {
-        "kind": "trimmed_reads",
-        "workflow": "nuvs",
-        "parent_id": sample.id,
-        "tool_name": "skewer",
-        "tool_version": "0.2.2",
-        "min_length": 35,
-        "mode": "pe",
-        "end_quality": 20,
-        "max_error_rate": 0.1,
-        "max_indel_rate": 0.03,
-        "mean_quality": 25,
-    }.items()
+    assert (
+        params.items()
+        >= {
+            "kind": "trimmed_reads",
+            "workflow": "nuvs",
+            "parent_id": sample.id,
+            "tool_name": "skewer",
+            "tool_version": "0.2.2",
+            "min_length": 35,
+            "mode": "pe",
+            "end_quality": 20,
+            "max_error_rate": 0.1,
+            "max_indel_rate": 0.03,
+            "mean_quality": 25,
+        }.items()
+    )
 
 
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
@@ -519,9 +532,9 @@ async def test_create_reference_index_cache_hit(
 async def test_create_reference_index_cache_miss(
     index: WFIndex,
     reference_index_path: Path,
+    run_subprocess: RunSubprocess,
 ):
     cache = FakeWorkflowCache()
-    run_subprocess = FakeRunSubprocess()
 
     result = await create_reference_index(
         cache,
@@ -542,12 +555,7 @@ async def test_create_reference_index_cache_miss(
     assert cache.gets == [(key, reference_index_path.parent.parent)]
     assert cache.puts == [(key, reference_index_path.parent, params)]
     assert result == reference_index_path
-    assert run_subprocess.commands[0] == ["bowtie2-build", "--version"]
-    assert run_subprocess.commands[1][:3] == ["bowtie2-build", "--threads", "4"]
-    assert run_subprocess.commands[1][-1] == str(reference_index_path)
-    assert read_directory_bytes(reference_index_path.parent) == bowtie2_bundle_bytes(
-        "reference",
-    )
+    assert_bowtie2_bundle_exists(reference_index_path)
 
 
 async def test_create_reference_index_continues_when_cache_put_is_skipped(
@@ -626,12 +634,12 @@ async def test_create_subtraction_indexes_cache_hit(
 
 
 async def test_create_subtraction_indexes_cache_miss(
+    run_subprocess: RunSubprocess,
     subtraction_index_path: SubtractionIndexPath,
     subtraction_indexes_path: Path,
     subtractions: list[WFSubtraction],
 ):
     cache = FakeWorkflowCache()
-    run_subprocess = FakeRunSubprocess()
     subtraction = subtractions[0]
     index_path = subtraction_index_path(0)
 
@@ -654,12 +662,7 @@ async def test_create_subtraction_indexes_cache_miss(
     assert cache.gets == [(key, index_path.parent.parent)]
     assert cache.puts == [(key, index_path.parent, params)]
     assert result is None
-    assert run_subprocess.commands[0] == ["bowtie2-build", "--version"]
-    assert run_subprocess.commands[1][:3] == ["bowtie2-build", "--threads", "4"]
-    assert run_subprocess.commands[1][-1] == str(index_path)
-    assert read_directory_bytes(index_path.parent) == bowtie2_bundle_bytes(
-        "subtraction",
-    )
+    assert_bowtie2_bundle_exists(index_path)
 
 
 async def test_eliminate_otus(

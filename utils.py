@@ -436,21 +436,21 @@ async def create_mapping_index(
     result = await cache.get(key, cache_restore_parent)
 
     if isinstance(result, CacheHit):
-        log.info("restored cached mapping index", outcome="hit")
+        log.info("restored cached mapping index")
         return
 
-    log.info("building mapping index", outcome="miss")
+    log.info("building mapping index")
 
-    index_dir.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(index_dir.mkdir, parents=True, exist_ok=True)
 
     await build_bowtie2_index(fasta_path, index_prefix, proc, run_subprocess)
 
     created = await cache.put(key, index_dir, params=params)
 
     if created:
-        log.info("cached built mapping index", outcome="put")
+        log.info("cached built mapping index")
     else:
-        log.info("mapping index cache already exists", outcome="put_skipped")
+        log.info("mapping index cache already exists")
 
 
 def read_fastq_headers(path: Path) -> set[str]:

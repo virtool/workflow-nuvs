@@ -49,7 +49,7 @@ async def delete_analysis(analysis: WFAnalysis):
 async def trimmed_path(work_path: Path) -> Path:
     """The path to a directory for trimmed reads."""
     trimmed_path = work_path / "trimmed"
-    trimmed_path.mkdir(exist_ok=True)
+    await asyncio.to_thread(trimmed_path.mkdir, exist_ok=True)
 
     return trimmed_path
 
@@ -115,12 +115,12 @@ async def trim_reads(
     result = await cache.get(key, work_path)
 
     if isinstance(result, CacheHit):
-        log.info("restored cached trimmed reads", outcome="hit")
+        log.info("restored cached trimmed reads")
         return
 
-    log.info("trimming reads", outcome="miss")
+    log.info("trimming reads")
 
-    trimmed_path.mkdir(parents=True, exist_ok=True)
+    await asyncio.to_thread(trimmed_path.mkdir, parents=True, exist_ok=True)
 
     await skewer(
         config,
@@ -131,9 +131,9 @@ async def trim_reads(
     created = await cache.put(key, trimmed_path, params=params)
 
     if created:
-        log.info("cached trimmed reads", outcome="put")
+        log.info("cached trimmed reads")
     else:
-        log.info("trimmed reads cache already exists", outcome="put_skipped")
+        log.info("trimmed reads cache already exists")
 
 
 @step(name="Create reference index")
