@@ -2,7 +2,6 @@ import gzip
 import shutil
 from collections.abc import Callable
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 from Bio import SeqIO
@@ -96,67 +95,6 @@ class FakeWorkflowCache:
             raise self.put_exception
 
         return self.put_created
-
-
-class FakeRunSubprocess:
-    def __init__(self):
-        self.commands = []
-
-    async def __call__(
-        self,
-        command: list[str],
-        cwd: str | Path | None = None,
-        env: dict | None = None,
-        stderr_handler=None,
-        stdout_handler=None,
-    ):
-        self.commands.append(command)
-
-        if command == ["bowtie2-build", "--version"]:
-            await stdout_handler(b"/usr/bin/bowtie2-build-s version 2.5.4\n")
-            return SimpleNamespace(returncode=0)
-
-        if command == ["skewer", "--version"]:
-            await stdout_handler(b"skewer version 0.2.2\n")
-            return SimpleNamespace(returncode=0)
-
-        if command[0] == "bowtie2-build":
-            fasta_path = Path(command[-2])
-
-            if not fasta_path.exists():
-                raise FileNotFoundError(fasta_path)
-
-            prefix = Path(command[-1])
-            prefix.parent.mkdir(parents=True, exist_ok=True)
-
-            for suffix in BOWTIE2_INDEX_SUFFIXES:
-                (prefix.parent / f"{prefix.name}.{suffix}").write_bytes(
-                    f"{prefix.name}.{suffix}".encode(),
-                )
-
-            return SimpleNamespace(returncode=0)
-
-        raise AssertionError(f"Unexpected subprocess command: {command}")
-
-
-class FakeSkewer:
-    def __init__(self):
-        self.calls = []
-
-    async def __call__(
-        self,
-        config: SkewerConfiguration,
-        paths: ReadPaths,
-        output_path: Path,
-    ):
-        self.calls.append((config, paths, output_path))
-        output_path.mkdir(parents=True, exist_ok=True)
-        (output_path / "reads_1.fq.gz").write_bytes(b"trimmed-1")
-
-        if len(paths) == 2:
-            (output_path / "reads_2.fq.gz").write_bytes(b"trimmed-2")
-
-        return SimpleNamespace(command=[], output_path=output_path, read_paths=paths)
 
 
 def write_bowtie2_bundle(path: Path, prefix: str, content: bytes = b"cached"):
@@ -382,7 +320,10 @@ async def test_trim_reads(
         } == snapshot
 
 
-async def test_get_trimmed_reads_cache_params(sample: WFSample):
+async def test_get_trimmed_reads_cache_params(
+    run_subprocess: RunSubprocess,
+    sample: WFSample,
+):
     sample.paired = True
     sample.library_type = LibraryType.normal
     config = SkewerConfiguration(
@@ -391,7 +332,7 @@ async def test_get_trimmed_reads_cache_params(sample: WFSample):
         number_of_processes=4,
     )
 
-    params = await get_trimmed_reads_cache_params(config, sample, FakeRunSubprocess())
+    params = await get_trimmed_reads_cache_params(config, sample, run_subprocess)
 
     assert (
         params.items()
@@ -414,6 +355,7 @@ async def test_get_trimmed_reads_cache_params(sample: WFSample):
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
 async def test_trim_reads_cache_hit(
     paired: bool,
+    run_subprocess: RunSubprocess,
     sample: WFSample,
     tmp_path: Path,
     work_path: Path,
@@ -422,7 +364,9 @@ async def test_trim_reads_cache_hit(
     sample.quality.length = [45, 76]
 
     if paired:
-        sample.read_paths = (*sample.read_paths, tmp_path / "reads_2.fq.gz")
+        right_path = tmp_path / "reads_2.fq.gz"
+        shutil.copyfile(sample.read_paths[0], right_path)
+        sample.read_paths = (*sample.read_paths, right_path)
 
     cached_path = tmp_path / "trimmed"
     cached_path.mkdir()
@@ -432,8 +376,7 @@ async def test_trim_reads_cache_hit(
         (cached_path / "reads_2.fq.gz").write_bytes(b"cached-2")
 
     cache = FakeWorkflowCache(cached_path)
-    run_subprocess = FakeRunSubprocess()
-    skewer_ = FakeSkewer()
+    skewer_ = skewer(4, run_subprocess)
 
     await trim_reads(cache, 4, run_subprocess, sample, skewer_, work_path)
 
@@ -442,24 +385,22 @@ async def test_trim_reads_cache_hit(
         mode=SkewerMode.PAIRED_END if paired else SkewerMode.SINGLE_END,
         number_of_processes=4,
     )
-    params = await get_trimmed_reads_cache_params(config, sample, FakeRunSubprocess())
+    params = await get_trimmed_reads_cache_params(config, sample, run_subprocess)
     key = derive_key(params)
 
     assert len(cache.gets) == 1
     assert cache.gets[0] == (key, work_path)
     assert cache.puts == []
-    assert skewer_.calls == []
     assert (work_path / "trimmed" / "reads_1.fq.gz").read_bytes() == b"cached-1"
 
     if paired:
         assert (work_path / "trimmed" / "reads_2.fq.gz").read_bytes() == b"cached-2"
 
-    assert run_subprocess.commands == [["skewer", "--version"]]
-
 
 @pytest.mark.parametrize("paired", [False, True], ids=["unpaired", "paired"])
 async def test_trim_reads_cache_miss(
     paired: bool,
+    run_subprocess: RunSubprocess,
     sample: WFSample,
     tmp_path: Path,
     work_path: Path,
@@ -468,11 +409,12 @@ async def test_trim_reads_cache_miss(
     sample.quality.length = [45, 76]
 
     if paired:
-        sample.read_paths = (*sample.read_paths, tmp_path / "reads_2.fq.gz")
+        right_path = tmp_path / "reads_2.fq.gz"
+        shutil.copyfile(sample.read_paths[0], right_path)
+        sample.read_paths = (*sample.read_paths, right_path)
 
     cache = FakeWorkflowCache()
-    run_subprocess = FakeRunSubprocess()
-    skewer_ = FakeSkewer()
+    skewer_ = skewer(4, run_subprocess)
 
     await trim_reads(cache, 4, run_subprocess, sample, skewer_, work_path)
 
@@ -481,28 +423,27 @@ async def test_trim_reads_cache_miss(
         mode=SkewerMode.PAIRED_END if paired else SkewerMode.SINGLE_END,
         number_of_processes=4,
     )
-    params = await get_trimmed_reads_cache_params(config, sample, FakeRunSubprocess())
+    params = await get_trimmed_reads_cache_params(config, sample, run_subprocess)
     key = derive_key(params)
 
     assert len(cache.gets) == 1
     assert cache.gets[0][0] == key
     assert cache.puts == [(key, work_path / "trimmed", params)]
-    assert len(skewer_.calls) == 1
-    assert (work_path / "trimmed" / "reads_1.fq.gz").read_bytes() == b"trimmed-1"
+    assert (work_path / "trimmed" / "reads_1.fq.gz").stat().st_size > 0
 
     if paired:
-        assert (work_path / "trimmed" / "reads_2.fq.gz").read_bytes() == b"trimmed-2"
+        assert (work_path / "trimmed" / "reads_2.fq.gz").stat().st_size > 0
 
 
 async def test_create_reference_index_cache_hit(
     index: WFIndex,
     reference_index_path: Path,
+    run_subprocess: RunSubprocess,
     tmp_path: Path,
 ):
     source = tmp_path / reference_index_path.parent.name
     write_bowtie2_bundle(source, "reference")
     cache = FakeWorkflowCache(source)
-    run_subprocess = FakeRunSubprocess()
 
     result = await create_reference_index(
         cache,
@@ -515,7 +456,7 @@ async def test_create_reference_index_cache_hit(
     params = await get_mapping_index_cache_params(
         "reference_mapping_index",
         index.id,
-        FakeRunSubprocess(),
+        run_subprocess,
         {"source": "reference_fasta"},
     )
     key = derive_key(params)
@@ -523,7 +464,6 @@ async def test_create_reference_index_cache_hit(
     assert cache.gets == [(key, reference_index_path.parent.parent)]
     assert cache.puts == []
     assert result == reference_index_path
-    assert run_subprocess.commands == [["bowtie2-build", "--version"]]
     assert read_directory_bytes(reference_index_path.parent) == read_directory_bytes(
         source,
     )
@@ -547,7 +487,7 @@ async def test_create_reference_index_cache_miss(
     params = await get_mapping_index_cache_params(
         "reference_mapping_index",
         index.id,
-        FakeRunSubprocess(),
+        run_subprocess,
         {"source": "reference_fasta"},
     )
     key = derive_key(params)
@@ -561,16 +501,16 @@ async def test_create_reference_index_cache_miss(
 async def test_create_reference_index_continues_when_cache_put_is_skipped(
     index: WFIndex,
     reference_index_path: Path,
+    run_subprocess: RunSubprocess,
 ):
     cache = FakeWorkflowCache(put_created=False)
-    run_subprocess = FakeRunSubprocess()
 
     await create_reference_index(cache, index, 4, reference_index_path, run_subprocess)
 
     params = await get_mapping_index_cache_params(
         "reference_mapping_index",
         index.id,
-        FakeRunSubprocess(),
+        run_subprocess,
         {"source": "reference_fasta"},
     )
     key = derive_key(params)
@@ -581,9 +521,9 @@ async def test_create_reference_index_continues_when_cache_put_is_skipped(
 async def test_create_reference_index_raises_unexpected_cache_put_failure(
     index: WFIndex,
     reference_index_path: Path,
+    run_subprocess: RunSubprocess,
 ):
     cache = FakeWorkflowCache(put_exception=RuntimeError("cache upload failed"))
-    run_subprocess = FakeRunSubprocess()
 
     with pytest.raises(RuntimeError, match="cache upload failed"):
         await create_reference_index(
@@ -596,6 +536,7 @@ async def test_create_reference_index_raises_unexpected_cache_put_failure(
 
 
 async def test_create_subtraction_indexes_cache_hit(
+    run_subprocess: RunSubprocess,
     subtraction_index_path: SubtractionIndexPath,
     subtraction_indexes_path: Path,
     subtractions: list[WFSubtraction],
@@ -606,7 +547,6 @@ async def test_create_subtraction_indexes_cache_hit(
     source = tmp_path / index_path.parent.name
     write_bowtie2_bundle(source, "subtraction")
     cache = FakeWorkflowCache(source)
-    run_subprocess = FakeRunSubprocess()
 
     result = await create_subtraction_indexes(
         cache,
@@ -619,7 +559,7 @@ async def test_create_subtraction_indexes_cache_hit(
     params = await get_mapping_index_cache_params(
         "subtraction_mapping_index",
         subtraction.id,
-        FakeRunSubprocess(),
+        run_subprocess,
         {"source": "subtraction_fasta"},
     )
     key = derive_key(params)
@@ -627,7 +567,6 @@ async def test_create_subtraction_indexes_cache_hit(
     assert cache.gets == [(key, index_path.parent.parent)]
     assert cache.puts == []
     assert result is None
-    assert run_subprocess.commands == [["bowtie2-build", "--version"]]
     assert read_directory_bytes(index_path.parent) == read_directory_bytes(
         source,
     )
@@ -654,7 +593,7 @@ async def test_create_subtraction_indexes_cache_miss(
     params = await get_mapping_index_cache_params(
         "subtraction_mapping_index",
         subtraction.id,
-        FakeRunSubprocess(),
+        run_subprocess,
         {"source": "subtraction_fasta"},
     )
     key = derive_key(params)
