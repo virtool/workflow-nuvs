@@ -61,29 +61,20 @@ SubtractionIndexPath = Callable[[int | WFSubtraction], Path]
 class _FakeWorkflowCacheAPI:
     """Fake only the API calls used by the real workflow cache."""
 
-    def __init__(
-        self,
-        *,
-        hit_source: Path | list[Path] | None = None,
-        put_created: bool = True,
-        put_exception: Exception | None = None,
-    ) -> None:
-        self.hit_source = hit_source
-        self.put_created = put_created
-        self.put_exception = put_exception
+    def __init__(self) -> None:
+        self.hit_sources = []
+        self.put_created = True
+        self.put_exception = None
         self.gets = []
         self.puts = []
 
     async def get_cache(self, key: str, dest: Path) -> None:
         self.gets.append(key)
 
-        if self.hit_source is None:
+        try:
+            hit_source = self.hit_sources.pop(0)
+        except IndexError:
             raise JobsAPINotFoundError
-
-        if isinstance(self.hit_source, list):
-            hit_source = self.hit_source[len(self.gets) - 1]
-        else:
-            hit_source = self.hit_source
 
         await write_path_as_tar(hit_source, dest)
 
@@ -99,22 +90,6 @@ class _FakeWorkflowCacheAPI:
             raise self.put_exception
 
         return self.put_created
-
-
-def _fake_workflow_cache(
-    work_path: Path,
-    *,
-    hit_source: Path | list[Path] | None = None,
-    put_created: bool = True,
-    put_exception: Exception | None = None,
-) -> tuple[WorkflowCache, _FakeWorkflowCacheAPI]:
-    api = _FakeWorkflowCacheAPI(
-        hit_source=hit_source,
-        put_created=put_created,
-        put_exception=put_exception,
-    )
-
-    return WorkflowCache(api, work_path), api
 
 
 def write_bowtie2_bundle(path: Path, prefix: str, content: bytes = b"cached"):
@@ -320,7 +295,8 @@ async def test_trim_reads(
 
     # Instantiate the skewer fixture.
     skewer_ = skewer(2, run_subprocess)
-    cache, _api = _fake_workflow_cache(work_path)
+    api = _FakeWorkflowCacheAPI()
+    cache = WorkflowCache(api, work_path)
 
     await trim_reads(
         cache,
@@ -396,7 +372,9 @@ async def test_trim_reads_cache_hit(
     if paired:
         (cached_path / "reads_2.fq.gz").write_bytes(b"cached-2")
 
-    cache, api = _fake_workflow_cache(work_path, hit_source=cached_path)
+    api = _FakeWorkflowCacheAPI()
+    api.hit_sources.append(cached_path)
+    cache = WorkflowCache(api, work_path)
     skewer_ = skewer(4, run_subprocess)
 
     await trim_reads(cache, 4, run_subprocess, sample, skewer_, work_path)
@@ -433,7 +411,8 @@ async def test_trim_reads_cache_miss(
         shutil.copyfile(sample.read_paths[0], right_path)
         sample.read_paths = (*sample.read_paths, right_path)
 
-    cache, api = _fake_workflow_cache(work_path)
+    api = _FakeWorkflowCacheAPI()
+    cache = WorkflowCache(api, work_path)
     skewer_ = skewer(4, run_subprocess)
 
     await trim_reads(cache, 4, run_subprocess, sample, skewer_, work_path)
@@ -464,10 +443,9 @@ async def test_create_reference_index_cache_hit(
 ):
     source = tmp_path / reference_index_path.parent.name
     write_bowtie2_bundle(source, "reference")
-    cache, api = _fake_workflow_cache(
-        reference_index_path.parent.parent,
-        hit_source=source,
-    )
+    api = _FakeWorkflowCacheAPI()
+    api.hit_sources.append(source)
+    cache = WorkflowCache(api, reference_index_path.parent.parent)
 
     result = await create_reference_index(
         cache,
@@ -498,7 +476,8 @@ async def test_create_reference_index_cache_miss(
     reference_index_path: Path,
     run_subprocess: RunSubprocess,
 ):
-    cache, api = _fake_workflow_cache(reference_index_path.parent.parent)
+    api = _FakeWorkflowCacheAPI()
+    cache = WorkflowCache(api, reference_index_path.parent.parent)
 
     result = await create_reference_index(
         cache,
@@ -529,10 +508,9 @@ async def test_create_reference_index_continues_when_cache_put_is_skipped(
     reference_index_path: Path,
     run_subprocess: RunSubprocess,
 ):
-    cache, api = _fake_workflow_cache(
-        reference_index_path.parent.parent,
-        put_created=False,
-    )
+    api = _FakeWorkflowCacheAPI()
+    api.put_created = False
+    cache = WorkflowCache(api, reference_index_path.parent.parent)
 
     await create_reference_index(cache, index, 4, reference_index_path, run_subprocess)
 
@@ -554,10 +532,9 @@ async def test_create_reference_index_raises_unexpected_cache_put_failure(
     reference_index_path: Path,
     run_subprocess: RunSubprocess,
 ):
-    cache, _api = _fake_workflow_cache(
-        reference_index_path.parent.parent,
-        put_exception=RuntimeError("cache upload failed"),
-    )
+    api = _FakeWorkflowCacheAPI()
+    api.put_exception = RuntimeError("cache upload failed")
+    cache = WorkflowCache(api, reference_index_path.parent.parent)
 
     with pytest.raises(RuntimeError, match="cache upload failed"):
         await create_reference_index(
@@ -580,10 +557,9 @@ async def test_create_subtraction_indexes_cache_hit(
     index_path = subtraction_index_path(0)
     source = tmp_path / index_path.parent.name
     write_bowtie2_bundle(source, "subtraction")
-    cache, api = _fake_workflow_cache(
-        subtraction_indexes_path.parent,
-        hit_source=source,
-    )
+    api = _FakeWorkflowCacheAPI()
+    api.hit_sources.append(source)
+    cache = WorkflowCache(api, subtraction_indexes_path.parent)
 
     result = await create_subtraction_indexes(
         cache,
@@ -615,7 +591,8 @@ async def test_create_subtraction_indexes_cache_miss(
     subtraction_indexes_path: Path,
     subtractions: list[WFSubtraction],
 ):
-    cache, api = _fake_workflow_cache(subtraction_indexes_path.parent)
+    api = _FakeWorkflowCacheAPI()
+    cache = WorkflowCache(api, subtraction_indexes_path.parent)
     subtraction = subtractions[0]
     index_path = subtraction_index_path(0)
 
