@@ -4,6 +4,7 @@ import os
 import shlex
 import shutil
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import aiofiles
 from pyfixtures import fixture
@@ -17,17 +18,22 @@ from virtool.utils import compress_file, decompress_file
 from virtool.workflow import RunSubprocess, hooks, step
 from virtool.workflow.analysis import ReadPaths
 from virtool.workflow.data.analyses import WFAnalysis
+from virtool.workflow.data.cache import CacheHit, WorkflowCache
 from virtool.workflow.data.hmms import WFHMMs
 from virtool.workflow.data.indexes import WFIndex
 from virtool.workflow.data.samples import WFSample
 from virtool.workflow.data.subtractions import WFSubtraction
 
 from utils import (
+    WORKFLOW_NAME,
     SkewerConfiguration,
     SkewerMode,
     SkewerRunner,
     calculate_trimming_min_length,
+    create_mapping_index,
+    derive_cache_key,
     filter_reads_by_headers,
+    get_trimmed_reads_cache_params,
     read_fastq_headers,
 )
 
@@ -43,7 +49,7 @@ async def delete_analysis(analysis: WFAnalysis):
 async def trimmed_path(work_path: Path) -> Path:
     """The path to a directory for trimmed reads."""
     trimmed_path = work_path / "trimmed"
-    trimmed_path.mkdir(exist_ok=True)
+    await asyncio.to_thread(trimmed_path.mkdir, exist_ok=True)
 
     return trimmed_path
 
@@ -59,32 +65,104 @@ async def trimmed_read_paths(sample: WFSample, trimmed_path: Path) -> ReadPaths:
     return (trimmed_path / "reads_1.fq.gz",)
 
 
+@fixture
+async def reference_index_path(work_path: Path) -> Path:
+    """The Bowtie2 index prefix for the reference mapping index."""
+    return work_path / "reference_index" / "reference"
+
+
+def get_subtraction_index_path(
+    subtraction_indexes_path: Path,
+    subtraction_id: str,
+) -> Path:
+    return subtraction_indexes_path / subtraction_id / "subtraction"
+
+
+@fixture
+async def subtraction_indexes_path(work_path: Path) -> Path:
+    """The parent directory for cached subtraction indexes."""
+    return work_path / "subtraction_indexes"
+
+
 @step()
 async def trim_reads(
+    cache: WorkflowCache,
     proc: int,
+    run_subprocess: RunSubprocess,
     sample: WFSample,
     skewer: SkewerRunner,
     work_path: Path,
 ):
     """Trim reads using Skewer."""
     trimmed_path = work_path / "trimmed"
-    await asyncio.to_thread(trimmed_path.mkdir, parents=True)
+    config = SkewerConfiguration(
+        min_length=calculate_trimming_min_length(sample),
+        mode=SkewerMode.PAIRED_END if sample.paired else SkewerMode.SINGLE_END,
+        number_of_processes=proc,
+    )
+
+    params = await get_trimmed_reads_cache_params(config, sample, run_subprocess)
+    key = derive_cache_key(params)
+    log = logger.bind(
+        cache_kind="trimmed_reads",
+        key=key,
+        parent_id=sample.id,
+        workflow=WORKFLOW_NAME,
+    )
+
+    log.info("checking workflow cache")
+
+    result = await cache.get(key, work_path)
+
+    if isinstance(result, CacheHit):
+        log.info("restored cached trimmed reads")
+        return
+
+    log.info("trimming reads")
+
+    await asyncio.to_thread(trimmed_path.mkdir, parents=True, exist_ok=True)
 
     await skewer(
-        SkewerConfiguration(
-            min_length=calculate_trimming_min_length(sample),
-            mode=SkewerMode.PAIRED_END if sample.paired else SkewerMode.SINGLE_END,
-            number_of_processes=proc,
-        ),
+        config,
         sample.read_paths,
         output_path=trimmed_path,
     )
 
+    created = await cache.put(key, trimmed_path, params=params)
+
+    if created:
+        log.info("cached trimmed reads")
+    else:
+        log.info("trimmed reads cache already exists")
+
+
+@step(name="Create reference index")
+async def create_reference_index(
+    cache: WorkflowCache,
+    index: WFIndex,
+    proc: int,
+    reference_index_path: Path,
+    run_subprocess: RunSubprocess,
+) -> Path:
+    """Ensure the reference Bowtie2 index exists locally using the workflow cache."""
+    await create_mapping_index(
+        cache,
+        proc,
+        run_subprocess,
+        index_kind="reference_mapping_index",
+        index_prefix=reference_index_path,
+        fasta_path=index.fasta_path,
+        parent_id=index.id,
+        extra_params={"source": "reference_fasta"},
+    )
+
+    return reference_index_path
+
 
 @step(name="Eliminate OTUs")
 async def eliminate_otus(
-    index: WFIndex,
     proc: int,
+    reference_index_path: Path,
     run_subprocess: RunSubprocess,
     trimmed_read_paths: ReadPaths,
     work_path: Path,
@@ -103,7 +181,7 @@ async def eliminate_otus(
         1,
         "--very-fast-local",
         "-x",
-        index.bowtie_path,
+        reference_index_path,
         "--un",
         work_path / "unmapped_otus.fq",
         "-U",
@@ -113,11 +191,43 @@ async def eliminate_otus(
     await run_subprocess(command)
 
 
+@step(name="Create subtraction indexes")
+async def create_subtraction_indexes(
+    cache: WorkflowCache,
+    proc: int,
+    run_subprocess: RunSubprocess,
+    subtraction_indexes_path: Path,
+    subtractions: list[WFSubtraction],
+):
+    """Ensure subtraction Bowtie2 indexes exist locally using the workflow cache."""
+    for subtraction in subtractions:
+        index_path = get_subtraction_index_path(
+            subtraction_indexes_path,
+            subtraction.id,
+        )
+
+        with TemporaryDirectory() as temp_dir:
+            fasta_path = Path(temp_dir) / "subtraction.fa"
+            decompress_file(subtraction.fasta_path, fasta_path, proc)
+
+            await create_mapping_index(
+                cache,
+                proc,
+                run_subprocess,
+                index_kind="subtraction_mapping_index",
+                index_prefix=index_path,
+                fasta_path=fasta_path,
+                parent_id=subtraction.id,
+                extra_params={"source": "subtraction_fasta"},
+            )
+
+
 @step
 async def eliminate_subtraction(
     proc: int,
     run_subprocess: RunSubprocess,
     subtractions: list[WFSubtraction],
+    subtraction_indexes_path: Path,
     work_path: Path,
 ):
     """Map remaining reads to the subtraction and discard.
@@ -141,6 +251,11 @@ async def eliminate_subtraction(
         )
 
         for subtraction in subtractions:
+            subtraction_index_path = get_subtraction_index_path(
+                subtraction_indexes_path,
+                subtraction.id,
+            )
+
             await run_subprocess(
                 [
                     "bowtie2",
@@ -150,7 +265,7 @@ async def eliminate_subtraction(
                     "-p",
                     proc,
                     "-x",
-                    shlex.quote(str(subtraction.bowtie2_index_path)),
+                    shlex.quote(str(subtraction_index_path)),
                     "--un",
                     work_path / "unmapped_subtractions.fq",
                     "-U",
