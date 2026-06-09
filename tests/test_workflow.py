@@ -7,12 +7,10 @@ from pathlib import Path
 import pytest
 from Bio import SeqIO
 from pytest_mock import MockerFixture
-from structlog import get_logger
 from syrupy import SnapshotAssertion
 from virtool.caches.utils import derive_key
 from virtool.hmm.models import HMM
 from virtool.models.enums import LibraryType
-from virtool.samples.models import Sample
 from virtool.workflow.analysis import ReadPaths
 from virtool.workflow.data.analyses import WFAnalysis
 from virtool.workflow.data.cache import WorkflowCache
@@ -43,8 +41,6 @@ from workflow import (
     trim_reads,
     vfam,
 )
-
-logger = get_logger("test")
 
 BOWTIE2_INDEX_SUFFIXES = (
     "1.bt2",
@@ -107,13 +103,6 @@ def write_bowtie2_bundle(path: Path, prefix: str, content: bytes = b"cached"):
 def read_directory_bytes(path: Path) -> dict[str, bytes]:
     return {
         child.name: child.read_bytes() for child in path.iterdir() if child.is_file()
-    }
-
-
-def bowtie2_bundle_bytes(prefix: str, content: bytes | None = None) -> dict[str, bytes]:
-    return {
-        f"{prefix}.{suffix}": content or f"{prefix}.{suffix}".encode()
-        for suffix in BOWTIE2_INDEX_SUFFIXES
     }
 
 
@@ -576,7 +565,7 @@ async def test_eliminate_otus(
         work_path,
     )
 
-    with open(work_path / "unmapped_otus.fq") as f:
+    with (work_path / "unmapped_otus.fq").open() as f:
         assert [line.rstrip() for line in f] == snapshot
 
 
@@ -616,17 +605,14 @@ async def test_eliminate_subtraction(
     )
 
     if no_subtractions:
-        assert (
-            open(work_path / "unmapped_subtractions.fq").read()
-            == open(
-                work_path / "unmapped_otus.fq",
-            ).read()
-        )
+        assert (work_path / "unmapped_subtractions.fq").read_text() == (
+            work_path / "unmapped_otus.fq"
+        ).read_text()
 
     assert {
         (record.id, record.seq)
         for record in SeqIO.parse(
-            work_path / work_path / "unmapped_subtractions.fq",
+            work_path / "unmapped_subtractions.fq",
             "fastq",
         )
     } == snapshot
@@ -663,9 +649,9 @@ async def test_reunite_pairs(
                 for line in unite[key]:
                     f.write(line + "\n")
 
-        with open(work_path / "unmapped_subtractions.fq", "w") as f:
-            for line in unite["separate"]:
-                f.write(line + "\n")
+        (work_path / "unmapped_subtractions.fq").write_text(
+            "\n".join(unite["separate"]) + "\n",
+        )
 
     await reunite_pairs(
         2,
@@ -676,7 +662,7 @@ async def test_reunite_pairs(
 
     if paired:
         for filename in ("unmapped_1.fq", "unmapped_2.fq"):
-            with open(work_path / filename) as f:
+            with (work_path / filename).open() as f:
                 assert sorted(line.rstrip() for line in f) == snapshot(name=filename)
 
 
@@ -686,7 +672,7 @@ async def test_assemble(
     analysis: WFAnalysis,
     example_path: Path,
     run_subprocess: RunSubprocess,
-    sample: Sample,
+    sample: WFSample,
     snapshot: SnapshotAssertion,
     work_path: Path,
 ):
@@ -746,7 +732,7 @@ async def test_process_fasta(
     await process_assembly(analysis, 2, results, work_path)
 
     assert results == snapshot(name="results")
-    assert open(work_path / "orfs.fa").read() == snapshot(name="fasta")
+    assert (work_path / "orfs.fa").read_text() == snapshot(name="fasta")
 
 
 async def test_vfam(
