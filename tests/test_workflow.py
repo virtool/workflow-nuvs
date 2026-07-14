@@ -30,7 +30,10 @@ from utils import (
     skewer,
 )
 from workflow import (
+    REFERENCE_MAPPING_INDEX_SELECTION,
+    REFERENCE_MAPPING_INDEX_SOURCE,
     assemble,
+    create_reference_fasta,
     create_reference_index,
     create_subtraction_indexes,
     eliminate_otus,
@@ -52,6 +55,89 @@ BOWTIE2_INDEX_SUFFIXES = (
 )
 
 SubtractionIndexPath = Callable[[int | WFSubtraction], Path]
+
+
+def get_index_otus(id_key: str = "id") -> list[dict]:
+    """Return structured index data using legacy or current ID fields."""
+
+    def with_id(id_: str) -> dict[str, str]:
+        return {id_key: id_}
+
+    def sequence(id_: str, value: str) -> dict:
+        return {
+            **with_id(id_),
+            "accession": id_,
+            "definition": id_,
+            "host": "",
+            "segment": None,
+            "sequence": value,
+        }
+
+    return [
+        {
+            **with_id("otu_1"),
+            "abbreviation": "OTU1",
+            "isolates": [
+                {
+                    **with_id("isolate_1"),
+                    "default": True,
+                    "sequences": [
+                        sequence("sequence_1", "ACGT"),
+                        sequence("sequence_2", "TGCA"),
+                    ],
+                    "source_name": "Default",
+                    "source_type": "isolate",
+                },
+                {
+                    **with_id("isolate_2"),
+                    "default": False,
+                    "sequences": [sequence("sequence_3", "CCCC")],
+                    "source_name": "Non-default",
+                    "source_type": "isolate",
+                },
+            ],
+            "name": "Default Virus",
+            "schema": [],
+            "taxid": None,
+            "version": 1,
+        },
+        {
+            **with_id("otu_2"),
+            "abbreviation": "OTU2",
+            "isolates": [
+                {
+                    **with_id("isolate_3"),
+                    "default": True,
+                    "sequences": [sequence("sequence_4", "GGGG")],
+                    "source_name": "Representative",
+                    "source_type": "strain",
+                },
+            ],
+            "name": "Other Virus",
+            "schema": [],
+            "taxid": None,
+            "version": 1,
+        },
+        {
+            **with_id("otu_without_default"),
+            "abbreviation": "NONE",
+            "isolates": [
+                {
+                    **with_id("isolate_without_default"),
+                    "default": False,
+                    "sequences": [
+                        sequence("sequence_without_default", "CCCC"),
+                    ],
+                    "source_name": "Non-default",
+                    "source_type": "isolate",
+                },
+            ],
+            "name": "Non-default Virus",
+            "schema": [],
+            "taxid": None,
+            "version": 1,
+        },
+    ]
 
 
 class _FakeWorkflowCacheAPI:
@@ -171,23 +257,23 @@ def hmms(example_path: Path, work_path: Path) -> WFHMMs:
 
 
 @pytest.fixture
-def index(workflow_data: WorkflowData, example_path: Path, work_path: Path) -> WFIndex:
-    index_path = work_path / "indexes" / workflow_data.index.id
-    index_path.parent.mkdir(parents=True)
-
-    shutil.copytree(example_path / "index", index_path)
-    index = WFIndex(
-        id=workflow_data.index.id,
-        path=index_path,
-        manifest={},
-        reference=workflow_data.index.reference,
-        sequence_lengths={},
-        sequence_otu_map={},
+async def index(workflow_data: WorkflowData, work_path: Path) -> WFIndex:
+    return await WFIndex.create(
+        workflow_data.index.id,
+        work_path / "indexes" / workflow_data.index.id / "index.sqlite",
+        None,
+        get_index_otus(),
     )
 
-    index.fasta_path.write_text(">reference\nACGT\n")
 
-    return index
+@pytest.fixture
+async def legacy_index(workflow_data: WorkflowData, work_path: Path) -> WFIndex:
+    return await WFIndex.create(
+        f"{workflow_data.index.id}_legacy",
+        work_path / "indexes" / f"{workflow_data.index.id}_legacy" / "index.sqlite",
+        None,
+        get_index_otus("_id"),
+    )
 
 
 @pytest.fixture
@@ -196,12 +282,17 @@ def reference_index_path(work_path: Path) -> Path:
 
 
 @pytest.fixture
+def reference_fasta_path(work_path: Path) -> Path:
+    return work_path / "reference.fa"
+
+
+@pytest.fixture
 async def sample(
     workflow_data: WorkflowData,
     example_path: Path,
     work_path: Path,
 ) -> WFSample:
-    path = work_path / "samples" / workflow_data.sample.id
+    path = work_path / "samples" / str(workflow_data.sample.id)
     path.mkdir(parents=True)
 
     shutil.copyfile(example_path / "sample" / "reads_1.fq.gz", path / "reads_1.fq.gz")
@@ -227,7 +318,7 @@ async def subtractions(
 
     subtraction_1, subtraction_2 = (
         WFSubtraction(
-            id=f"subtraction_{suffix}",
+            id=suffix,
             files=[],
             gc=workflow_data.subtraction.gc,
             nickname=f"Subby {suffix}",
@@ -412,8 +503,33 @@ async def test_trim_reads_cache_miss(
         assert (work_path / "trimmed" / "reads_2.fq.gz").stat().st_size > 0
 
 
+async def test_create_reference_fasta_from_current_index(
+    index: WFIndex,
+    reference_fasta_path: Path,
+):
+    result = await create_reference_fasta(index, reference_fasta_path)
+
+    assert result == reference_fasta_path
+    assert reference_fasta_path.read_text() == (
+        ">sequence_1\nACGT\n>sequence_2\nTGCA\n>sequence_4\nGGGG\n"
+    )
+
+
+async def test_create_reference_fasta_from_legacy_index(
+    legacy_index: WFIndex,
+    reference_fasta_path: Path,
+):
+    result = await create_reference_fasta(legacy_index, reference_fasta_path)
+
+    assert result == reference_fasta_path
+    assert reference_fasta_path.read_text() == (
+        ">sequence_1\nACGT\n>sequence_2\nTGCA\n>sequence_4\nGGGG\n"
+    )
+
+
 async def test_create_reference_index_cache_hit(
     index: WFIndex,
+    reference_fasta_path: Path,
     reference_index_path: Path,
     run_subprocess: RunSubprocess,
     tmp_path: Path,
@@ -426,16 +542,21 @@ async def test_create_reference_index_cache_hit(
         "reference_mapping_index",
         index.id,
         run_subprocess,
-        {"source": "reference_fasta"},
+        {
+            "source": REFERENCE_MAPPING_INDEX_SOURCE,
+            "selection": REFERENCE_MAPPING_INDEX_SELECTION,
+        },
     )
     key = derive_key(params)
 
     assert await workflow_cache.put(key, source, params)
+    await create_reference_fasta(index, reference_fasta_path)
 
     result = await create_reference_index(
         workflow_cache,
         index,
         4,
+        reference_fasta_path,
         reference_index_path,
         run_subprocess,
     )
@@ -448,14 +569,18 @@ async def test_create_reference_index_cache_hit(
 
 async def test_create_reference_index_cache_miss(
     index: WFIndex,
+    reference_fasta_path: Path,
     reference_index_path: Path,
     run_subprocess: RunSubprocess,
     workflow_cache: WorkflowCache,
 ):
+    await create_reference_fasta(index, reference_fasta_path)
+
     result = await create_reference_index(
         workflow_cache,
         index,
         4,
+        reference_fasta_path,
         reference_index_path,
         run_subprocess,
     )
@@ -474,7 +599,10 @@ async def test_workflow_cache_put_is_skipped_when_key_is_already_stored(
         "reference_mapping_index",
         index.id,
         run_subprocess,
-        {"source": "reference_fasta"},
+        {
+            "source": REFERENCE_MAPPING_INDEX_SOURCE,
+            "selection": REFERENCE_MAPPING_INDEX_SELECTION,
+        },
     )
     key = derive_key(params)
     path = reference_index_path.parent

@@ -39,6 +39,9 @@ from utils import (
 
 logger = get_logger("workflow")
 
+REFERENCE_MAPPING_INDEX_SOURCE = "index_sqlite"
+REFERENCE_MAPPING_INDEX_SELECTION = "default_isolates"
+
 
 @hooks.on_failure
 async def delete_analysis(analysis: WFAnalysis):
@@ -71,17 +74,37 @@ async def reference_index_path(work_path: Path) -> Path:
     return work_path / "reference_index" / "reference"
 
 
+@fixture
+async def reference_fasta_path(work_path: Path) -> Path:
+    """The local default-isolate FASTA used to build the reference index."""
+    return work_path / "reference.fa"
+
+
 def get_subtraction_index_path(
     subtraction_indexes_path: Path,
-    subtraction_id: str,
+    subtraction_id: int,
 ) -> Path:
-    return subtraction_indexes_path / subtraction_id / "subtraction"
+    return subtraction_indexes_path / str(subtraction_id) / "subtraction"
 
 
 @fixture
 async def subtraction_indexes_path(work_path: Path) -> Path:
     """The parent directory for cached subtraction indexes."""
     return work_path / "subtraction_indexes"
+
+
+@step(name="Create reference FASTA")
+async def create_reference_fasta(
+    index: WFIndex,
+    reference_fasta_path: Path,
+) -> Path:
+    """Write the index's default-isolate sequences to a local FASTA."""
+    await asyncio.to_thread(
+        reference_fasta_path.parent.mkdir, parents=True, exist_ok=True
+    )
+    await index.write_fasta(reference_fasta_path, index.iter_default_sequences())
+
+    return reference_fasta_path
 
 
 @step()
@@ -141,6 +164,7 @@ async def create_reference_index(
     cache: WorkflowCache,
     index: WFIndex,
     proc: int,
+    reference_fasta_path: Path,
     reference_index_path: Path,
     run_subprocess: RunSubprocess,
 ) -> Path:
@@ -151,9 +175,12 @@ async def create_reference_index(
         run_subprocess,
         index_kind="reference_mapping_index",
         index_prefix=reference_index_path,
-        fasta_path=index.fasta_path,
+        fasta_path=reference_fasta_path,
         parent_id=index.id,
-        extra_params={"source": "reference_fasta"},
+        extra_params={
+            "source": REFERENCE_MAPPING_INDEX_SOURCE,
+            "selection": REFERENCE_MAPPING_INDEX_SELECTION,
+        },
     )
 
     return reference_index_path
