@@ -136,13 +136,6 @@ def calculate_skewer_trimming_parameters(
         mode=SkewerMode.PAIRED_END if sample.paired else SkewerMode.SINGLE_END,
     )
 
-    if sample.library_type == LibraryType.amplicon:
-        config.end_quality = 0
-        config.mean_quality = 0
-        config.min_length = min_read_length
-
-        return config
-
     if sample.library_type == LibraryType.srna:
         config.max_length = 22
         config.min_length = 20
@@ -276,9 +269,6 @@ def calculate_trimming_min_length(sample: WFSample) -> int:
     :param sample: the sample
     :return: the minimum allowed trimmed read length
     """
-    if sample.library_type == LibraryType.amplicon:
-        return round(0.95 * sample.max_length)
-
     if sample.max_length < 80:
         return 35
 
