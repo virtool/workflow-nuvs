@@ -75,16 +75,16 @@ async def reference_index_path(work_path: Path) -> Path:
 
 
 @fixture
-async def reference_fasta_path(reference_index_path: Path) -> Path:
+async def reference_fasta_path(work_path: Path) -> Path:
     """The local default-isolate FASTA used to build the reference index."""
-    return reference_index_path.parent / "reference.fa"
+    return work_path / "reference.fa"
 
 
 def get_subtraction_index_path(
     subtraction_indexes_path: Path,
-    subtraction_id: str,
+    subtraction_id: int,
 ) -> Path:
-    return subtraction_indexes_path / subtraction_id / "subtraction"
+    return subtraction_indexes_path / str(subtraction_id) / "subtraction"
 
 
 @fixture

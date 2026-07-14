@@ -282,8 +282,8 @@ def reference_index_path(work_path: Path) -> Path:
 
 
 @pytest.fixture
-def reference_fasta_path(reference_index_path: Path) -> Path:
-    return reference_index_path.parent / "reference.fa"
+def reference_fasta_path(work_path: Path) -> Path:
+    return work_path / "reference.fa"
 
 
 @pytest.fixture
@@ -318,7 +318,7 @@ async def subtractions(
 
     subtraction_1, subtraction_2 = (
         WFSubtraction(
-            id=f"subtraction_{suffix}",
+            id=suffix,
             files=[],
             gc=workflow_data.subtraction.gc,
             nickname=f"Subby {suffix}",
@@ -550,6 +550,7 @@ async def test_create_reference_index_cache_hit(
     key = derive_key(params)
 
     assert await workflow_cache.put(key, source, params)
+    await create_reference_fasta(index, reference_fasta_path)
 
     result = await create_reference_index(
         workflow_cache,
