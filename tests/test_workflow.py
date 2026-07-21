@@ -228,7 +228,7 @@ def hmms(example_path: Path, work_path: Path) -> WFHMMs:
 
     annotations = [
         HMM(
-            id="foo",
+            id=1,
             cluster=2,
             count=21,
             entries=[],
@@ -240,7 +240,7 @@ def hmms(example_path: Path, work_path: Path) -> WFHMMs:
             names=["Test", "Foo", "Bar"],
         ),
         HMM(
-            id="bar",
+            id=2,
             cluster=9,
             count=21,
             entries=[],
@@ -260,7 +260,7 @@ def hmms(example_path: Path, work_path: Path) -> WFHMMs:
 async def index(workflow_data: WorkflowData, work_path: Path) -> WFIndex:
     return await WFIndex.create(
         workflow_data.index.id,
-        work_path / "indexes" / workflow_data.index.id / "index.sqlite",
+        work_path / "indexes" / str(workflow_data.index.id) / "index.sqlite",
         None,
         get_index_otus(),
     )
