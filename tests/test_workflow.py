@@ -1,7 +1,7 @@
 import asyncio
 import gzip
 import shutil
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 
 import pytest
@@ -57,8 +57,8 @@ BOWTIE2_INDEX_SUFFIXES = (
 SubtractionIndexPath = Callable[[int | WFSubtraction], Path]
 
 
-def get_index_otus(id_key: str = "id") -> list[dict]:
-    """Return structured index data using legacy or current ID fields."""
+async def iter_index_otus(id_key: str = "id") -> AsyncIterator[dict]:
+    """Yield structured index data using legacy or current ID fields."""
 
     def with_id(id_: str) -> dict[str, str]:
         return {id_key: id_}
@@ -73,7 +73,7 @@ def get_index_otus(id_key: str = "id") -> list[dict]:
             "sequence": value,
         }
 
-    return [
+    otus = [
         {
             **with_id("otu_1"),
             "abbreviation": "OTU1",
@@ -138,6 +138,9 @@ def get_index_otus(id_key: str = "id") -> list[dict]:
             "version": 1,
         },
     ]
+
+    for otu in otus:
+        yield otu
 
 
 class _FakeWorkflowCacheAPI:
@@ -262,7 +265,7 @@ async def index(workflow_data: WorkflowData, work_path: Path) -> WFIndex:
         workflow_data.index.id,
         work_path / "indexes" / str(workflow_data.index.id) / "index.sqlite",
         None,
-        get_index_otus(),
+        iter_index_otus(),
     )
 
 
@@ -272,7 +275,7 @@ async def legacy_index(workflow_data: WorkflowData, work_path: Path) -> WFIndex:
         f"{workflow_data.index.id}_legacy",
         work_path / "indexes" / f"{workflow_data.index.id}_legacy" / "index.sqlite",
         None,
-        get_index_otus("_id"),
+        iter_index_otus("_id"),
     )
 
 

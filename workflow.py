@@ -9,10 +9,6 @@ from tempfile import TemporaryDirectory
 import aiofiles
 from pyfixtures import fixture
 from structlog import get_logger
-from virtool.bio import (
-    find_orfs,
-    read_fasta,
-)
 from virtool.models.enums import LibraryType
 from virtool.utils import compress_file, decompress_file
 from virtool.workflow import RunSubprocess, hooks, step
@@ -33,7 +29,9 @@ from utils import (
     create_mapping_index,
     derive_cache_key,
     filter_reads_by_headers,
+    find_orfs,
     get_trimmed_reads_cache_params,
+    read_fasta,
     read_fastq_headers,
 )
 
